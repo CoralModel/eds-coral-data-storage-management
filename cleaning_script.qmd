@@ -1,0 +1,51 @@
+---
+title: "Cleaning Script"
+format: html
+editor: visual
+---
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+
+# Read in data and converting missing data to NA values
+
+clean_coral <- read_csv(here::here("data", "coral_tidy_2024_with_dynamics.csv"), na = c("UK", "MK", "?", "MD", "US", "NS", "MissingObs", "Na", "NA"))
+
+# Coral color way - consistent across all visualizations
+
+coral_colors <- c(
+ Acr = "blue", 
+ Poc = "red", 
+ Por = "darkgreen", 
+ Mil = "darkorange"
+)
+
+clean_coral <- clean_coral |> 
+  # Removing plots from backreef surveys 
+  filter(str_detect(transect, "T")) |> 
+# Change volume variables to numeric
+  mutate(
+    height = as.numeric(height),
+    width  = as.numeric(width),
+    length = as.numeric(length),
+      # Create volume (cm^2), z (m), and y (m) columns  
+     y_m = y / 100, 
+         z_m = z /100, 
+    # Acropora were input as "A" in 2024, converting to "Acr" 
+    taxa = case_when(taxa == "A" ~ "Acr", 
+                     TRUE ~ taxa)) 
+    
+# To use for referencing initial & final volumes 
+volume_corals <- clean_coral |> 
+  arrange(coral_number, year) |> 
+  group_by(coral_number) |> 
+  mutate(
+    size_t_minus1 = lag(length * width * height),
+    size_t0 = length * width * height,
+    size_t1 = lead(length * width * height))
+
+
+```
