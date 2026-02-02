@@ -12,7 +12,7 @@ library(tidyverse)
 
 # Read in data and converting missing data to NA values
 
-clean_coral <- read_csv(here::here("data", "coral_tidy_2024_with_dynamics.csv"), na = c("UK", "MK", "?", "MD", "US", "NS", "MissingObs", "Na", "NA"))
+clean_coral <- read_csv(here::here("data", "coral_tidy_dyn_2013-2024.csv"), na = c("UK", "MK", "?", "MD", "US", "NS", "MissingObs", "Na", "NA"))
 
 # Coral color way - consistent across all visualizations
 
@@ -33,13 +33,13 @@ clean_coral <- clean_coral |>
     length = as.numeric(length),
       # Create volume (cm^2), z (m), and y (m) columns  
      y_m = y / 100, 
-         z_m = z /100, 
+     z_m = z /100, 
     # Acropora were input as "A" in 2024, converting to "Acr" 
     taxa = case_when(taxa == "A" ~ "Acr", 
                      TRUE ~ taxa)) 
     
 # To use for referencing initial & final volumes 
-volume_corals <- clean_coral |> 
+volume_coral <- clean_coral |> 
   arrange(coral_number, year) |> 
   group_by(coral_number) |> 
   mutate(
@@ -47,5 +47,7 @@ volume_corals <- clean_coral |>
     size_t0 = length * width * height,
     size_t1 = lead(length * width * height))
 
+write_csv(clean_coral, file = "data/clean_corals.csv")
+write_csv(volume_coral, file = "data/volume_corals.csv")
 
 ```
