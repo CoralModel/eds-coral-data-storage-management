@@ -12,7 +12,7 @@ library(tidyverse)
 
 # Read in data and converting missing data to NA values
 
-clean_coral <- read_csv(here::here("data", "coral_tidy_dyn_2013-2024.csv"), na = c("UK", "MK", "?", "MD", "US", "NS", "MissingObs", "Na", "NA"))
+clean_coral <- read_csv(here::here("data", "updated_coral_tidy_2013-2024.csv"), na = c("UK", "MK", "?", "MD", "US", "NS", "MissingObs", "Na", "NA"))
 
 # Coral color way - consistent across all visualizations
 
