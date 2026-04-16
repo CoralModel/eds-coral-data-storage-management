@@ -2,6 +2,7 @@
 title: "Volume Cleaning Script"
 format: html
 editor: visual
+--- %>% %>% 
 ---
 
 ```{r}
@@ -20,9 +21,9 @@ coral_colors <- c(
 clean_coral <- read_csv(
   here::here("data", "updated_coral_tidy_2013-2024.csv"),
   na = c("UK", "MK", "?", "MD", "US", "NS", "MissingObs", "Na", "NA")
-) |>
+) %>%
   # Remove backreef plots, keep only transect surveys
-  filter(str_detect(transect, "T")) |>
+  filter(str_detect(transect, "T")) %>%
  mutate(
     height = as.numeric(height),
     width  = as.numeric(width),
@@ -32,37 +33,44 @@ clean_coral <- read_csv(
     y_m    = y / 100,
     z_m    = z / 100,
     # "A" was used for Acropora in 2024; standardize to "Acr"
-    taxa   = if_else(taxa == "A", "Acr", taxa)
+    taxa   = if_else(taxa == "A", "Acr", taxa),
+    # Assign old transects
+    transect = case_when(
+           str_detect(transect, "1") ~ "T1",
+           str_detect(transect, "2") ~ "T2",
+           str_detect(transect, "3") ~ "T3",
+           str_detect(transect, "4") ~ "T4",
+         ),
+    # Create unique transect ID
+    transect_id = paste(site, habitat, transect, sep = "_"),
+    # Create bleaching period variable
+    period = case_when(
+    year < 2019 ~ 0,
+    TRUE ~ 1
+  ),
+
+  
   )
 ```
 
 ```{r}
 ## Finding giant porites 
 
-# clean_coral |> 
-#   filter(taxa == "Por") |> 
-#   arrange(desc(volume)) |> 
-#   select(coral_number, year, length, width, height, volume) |> 
+# clean_coral %>% 
+#   filter(taxa == "Por") %>% 
+#   arrange(desc(volume)) %>% 
+#   select(coral_number, year, length, width, height, volume) %>% 
 #   head()
 ```
 
-# Volume functions
+# Source volume functions
 
 ```{r}
-sph_vol <- function(l, w, h) {
-  r <- (l + w + h) / 3 / 2
-  (4/3) * pi * r^3
-}
+source(here::here("R", "sph_vol.R"))
 
-hemi_sph_vol <- function(l, w, h) {
-  r <- (l + w + h) / 3 / 2
-  (2/3) * pi * r^3
-}
+source(here::here("R", "hemisph_vol.R"))
 
-cyl_vol <- function(l, w, h) {
-  r <- ((l + w) / 2) / 2
-  pi * r^2 * h
-}
+source(here::here("R", "cyl_vol.R"))
 ```
 
 # Calculate volume and lagged sizes
@@ -70,18 +78,18 @@ cyl_vol <- function(l, w, h) {
 Removed rowwise() and the 3-way filter/rbind — replaced with a single case_when in mutate Dropped size_t0 = volume (redundant) Added ungroup() after the lagged size calculation Switched case_when to if_else for the single taxa recode here::here() on both write_csv calls Collapsed the initial cleaning into one piped chain
 
 ```{r}
-volume_coral <- clean_coral |>
+volume_coral <- clean_coral %>%
   mutate(size_t0 = case_when(
     taxa == "Poc" ~ sph_vol(length, width, height),
-    taxa == "Por" ~ hemi_sph_vol(length, width, height),
+    taxa == "Por" ~ hemisph_vol(length, width, height),
     TRUE          ~ cyl_vol(length, width, height)
-  )) |>
-  arrange(coral_number, year) |>
-  group_by(coral_number) |>
+  )) %>%
+  arrange(coral_number, year) %>%
+  group_by(coral_number) %>%
   mutate(
     size_t_minus1 = lag(size_t0),
     size_t1       = lead(size_t0)
-  ) |>
+  ) %>%
   ungroup()
 
 write_csv(clean_coral,  here::here("data", "clean_corals.csv"))
