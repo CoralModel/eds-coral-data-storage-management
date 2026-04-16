@@ -1,0 +1,112 @@
+---
+title: "Volume Cleaning Script"
+format: html
+editor: visual
+---
+
+```{r}
+library(tidyverse)
+
+coral_colors <- c(
+ Acr = "blue", 
+ Poc = "red", 
+ Por = "darkgreen", 
+ Mil = "darkorange"
+)
+```
+
+```{r}
+# Read in data, converting missing codes to NA
+clean_coral <- read_csv(
+  here::here("data", "updated_coral_tidy_2013-2024.csv"),
+  na = c("UK", "MK", "?", "MD", "US", "NS", "MissingObs", "Na", "NA")
+) |>
+  # Remove backreef plots, keep only transect surveys
+  filter(str_detect(transect, "T")) |>
+ mutate(
+    height = as.numeric(height),
+    width  = as.numeric(width),
+    length = as.numeric(length),
+    # Fix data entry error: height 800 should be 80 for this porites in 2020
+    height = if_else(coral_number == "LTER4_BR_T04_Por_5_30_40" & year == 2020, 80, height),
+    y_m    = y / 100,
+    z_m    = z / 100,
+    # "A" was used for Acropora in 2024; standardize to "Acr"
+    taxa   = if_else(taxa == "A", "Acr", taxa)
+  )
+```
+
+```{r}
+## Finding giant porites 
+
+# clean_coral |> 
+#   filter(taxa == "Por") |> 
+#   arrange(desc(volume)) |> 
+#   select(coral_number, year, length, width, height, volume) |> 
+#   head()
+```
+
+# Volume functions
+
+```{r}
+sph_vol <- function(l, w, h) {
+  r <- (l + w + h) / 3 / 2
+  (4/3) * pi * r^3
+}
+
+hemi_sph_vol <- function(l, w, h) {
+  r <- (l + w + h) / 3 / 2
+  (2/3) * pi * r^3
+}
+
+cyl_vol <- function(l, w, h) {
+  r <- ((l + w) / 2) / 2
+  pi * r^2 * h
+}
+```
+
+# Calculate volume and lagged sizes
+
+Removed rowwise() and the 3-way filter/rbind — replaced with a single case_when in mutate Dropped size_t0 = volume (redundant) Added ungroup() after the lagged size calculation Switched case_when to if_else for the single taxa recode here::here() on both write_csv calls Collapsed the initial cleaning into one piped chain
+
+```{r}
+volume_coral <- clean_coral |>
+  mutate(size_t0 = case_when(
+    taxa == "Poc" ~ sph_vol(length, width, height),
+    taxa == "Por" ~ hemi_sph_vol(length, width, height),
+    TRUE          ~ cyl_vol(length, width, height)
+  )) |>
+  arrange(coral_number, year) |>
+  group_by(coral_number) |>
+  mutate(
+    size_t_minus1 = lag(size_t0),
+    size_t1       = lead(size_t0)
+  ) |>
+  ungroup()
+
+write_csv(clean_coral,  here::here("data", "clean_corals.csv"))
+write_csv(volume_coral, here::here("data", "volume_corals.csv"))
+```
+
+```{r}
+ggplot(volume_coral, aes(x = taxa, y = size_t0, fill = taxa)) +
+  geom_boxplot() +
+  labs(x = "Taxa", y = "Log Volume (cm³)") +
+  scale_y_log10(labels = scales::label_log()) + 
+  scale_fill_manual(values = coral_colors) + 
+  theme_minimal() + 
+  theme(legend.position = "none")
+```
+
+```{r}
+library(ggridges)
+
+
+ggplot(volume_coral, aes(x = size_t0, y = taxa, fill = taxa)) +
+  geom_density_ridges() +
+  scale_x_log10(labels = scales::label_log()) +
+  labs(x = "Log Volume (cm³)", y = "Taxa") +
+  scale_fill_manual(values = coral_colors) + 
+  theme_minimal() + 
+    theme(legend.position = "none")
+```
