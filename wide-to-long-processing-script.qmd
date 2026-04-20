@@ -1,0 +1,45 @@
+---
+title: "Coral Demography Data Cleaning"
+format: html
+editor: visual
+---
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(here)
+library(janitor)
+
+wide_data_2013_2023 <- read_excel(here("rawdata", "Coral_Deomography_allyears_2013-24_V1.xlsx"), sheet = 1)
+
+library(readxl)
+library(dplyr)
+
+individual_files <- list.files("rawdata/2024sheets", pattern = "*.xlsx", full.names = TRUE)
+
+read_file <- function(f) {
+  meta <- read_excel(f, col_names = FALSE, n_max = 1)
+  obs <- tail(na.omit(as.character(meta[1, ])), 1)
+  
+  read_excel(f, skip = 1, col_names = TRUE, col_types = "text") %>%
+    mutate(Observer = obs)
+}
+
+# df <- read_file("rawdata/2024sheets/LTER1_BR_T01_2024.xlsx")
+  
+
+
+
+df <- bind_rows(lapply(individual_files, read_file)) %>%
+    select(-c("W", "H", "L", "Status"))  %>%
+  unite("Length", L2024, L24, remove = TRUE, na.rm = TRUE) %>%
+  unite("Width", W2024, W24, remove = TRUE, na.rm = TRUE) %>%
+  unite("Height", H2024, H24, remove = TRUE, na.rm = TRUE) %>%
+  unite("Dynamic", dynam, dynamic, dyn, dynamics, remove = TRUE, na.rm = TRUE) %>%
+  mutate(year = 2024) %>%
+   clean_names()
+
+  
+
+
+```
