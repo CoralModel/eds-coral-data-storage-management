@@ -9,67 +9,63 @@ library(readxl)
 library(tidyverse)
 library(here)
 
-# ── 1. Load ────────────────────────────────────────────────────────────────────
-# Build path to Excel file and get all sheet names except the summary tab
-path <- here("rawdata", "Coral_Deomography_allyears_2013-24_V1.xlsx")
-sheets <- excel_sheets(path) |> discard(~ .x == "ALL_SITES")
+# ── 1. Load 2024 sheets ────────────────────────────────────────────────────────
+path_2024 <- here("rawdata", "2024sheets")
+files_2024 <- list.files(path_2024, pattern = "\\.xlsx$", full.names = TRUE)
 
-# Read each sheet into a named list (one data frame per site-habitat combination)
-raw_list <- map(sheets, ~ read_excel(path, sheet = .x))
-names(raw_list) <- sheets
+raw_list <- map(files_2024, ~ {
+  meta <- read_excel(.x, n_max = 1, col_names = FALSE, col_types = "text")
+  obs_pos <- which(meta[1, ] == "Obs:")
+  obs_val <- if (length(obs_pos) > 0 && obs_pos + 1 <= ncol(meta)) {
+    as.character(meta[1, obs_pos + 1])
+  } else {
+    NA_character_
+  }
+  read_excel(.x, skip = 1, col_types = "text") |>
+    mutate(obs = obs_val, source_file = basename(.x))
+})
+names(raw_list) <- basename(files_2024)
 
 # ── 2. Diagnose ────────────────────────────────────────────────────────────────
-# Use the first sheet as the reference column set
 reference_cols <- names(raw_list[[1]])
 
-# Flag any sheets with extra or missing columns relative to the reference
-map(sheets, ~ {
-  diff <- setdiff(names(raw_list[[.x]]), reference_cols)  # columns in this sheet but not reference
-  miss <- setdiff(reference_cols, names(raw_list[[.x]]))  # columns in reference but not this sheet
+map(names(raw_list), ~ {
+  diff <- setdiff(names(raw_list[[.x]]), reference_cols)
+  miss <- setdiff(reference_cols, names(raw_list[[.x]]))
   if (length(diff) > 0) cat(.x, "| extra:", diff, "\n")
   if (length(miss) > 0) cat(.x, "| missing:", miss, "\n")
 })
 
 # ── 3. Standardize column names ────────────────────────────────────────────────
-# Two naming inconsistencies need fixing before pivot:
-#   - No separator: L2013 -> L_2013 (same for W, H, Obs)
-#   - Year in middle: note_2013_extra -> note_extra_2013
-fix_names <- function(df) {
-  df |>
-    rename_with(~ str_replace(.x, "^(L|W|H|Obs)(\\d{4})$", "\\1_\\2")) |>
-    rename_with(~ str_replace(.x, "^note_(\\d{4})_extra$", "note_extra_\\1"))
-}
-raw_list <- map(raw_list, fix_names)
+# Coalesce measurement variants (L2024, L, L24 all mean the same thing)
+raw_2024 <- bind_rows(raw_list) |>
+  rename(
+    site     = Site,
+    habitat  = Hab,
+    transect = Tran,
+    taxa     = Taxa,
+    x        = X,
+    y        = Y,
+    z        = Z,
+    status   = Status,
+    note     = Notes
+  ) |>
+  mutate(
+    L        = coalesce(L2024, L, L24),
+    W        = coalesce(W2024, W, W24),
+    H        = coalesce(H2024, H, H24),
+    dynamics = coalesce(Dynam, Dynamic, Dyn, Dynamics),
+    year     = 2024L,
+    across(c(x, y, z, L, W, H), as.numeric)
+  ) |>
+  select(-any_of(c("L2024", "W2024", "H2024", "L24", "W24", "H24",
+                   "Dynam", "Dynamic", "Dyn", "Dynamics", "...17",
+                   "status", "source_file")))
 
-# ── 4. Verify all columns now match ───────────────────────────────────────────
-# Confirm standardization resolved all mismatches before binding
-all_same <- map(raw_list, names) |> unique() |> length() == 1
-cat("All sheets identical after fix:", all_same, "\n")
-
-# ── 5. Bind and pivot ──────────────────────────────────────────────────────────
-# Stack all sheets into one wide data frame, then pivot to long format
-# Each row becomes one coral observation per year
-# Columns matching _YEAR (e.g. L_2013) are split into variable name + year
-if (all_same) {
-  long <- raw_list |>
-    bind_rows() |>
-    pivot_longer(
-      cols = matches("_\\d{4}$"),         # select all columns ending in _YEAR
-      names_to = c(".value", "year"),     # split into variable name and year
-      names_pattern = "^(.+)_(\\d{4})$"  # regex: everything before last _YEAR
-    ) |>
-    mutate(year = as.integer(year))
-} else {
-  stop("Column mismatch remains — check diagnostic output above before proceeding.")
-}
-
-# ── 6. Inspect ─────────────────────────────────────────────────────────────────
-# Confirm structure and check for unexpected values in key columns
-glimpse(long)
-unique(long$site)
-unique(long$habitat)
-unique(long$transect)
-unique(long$year)
-unique(long$Obs)
-unique(long$L)
+# ── 4. Inspect ─────────────────────────────────────────────────────────────────
+glimpse(raw_2024)
+unique(raw_2024$site)
+unique(raw_2024$habitat)
+unique(raw_2024$transect)
+unique(raw_2024$taxa)
 ```
