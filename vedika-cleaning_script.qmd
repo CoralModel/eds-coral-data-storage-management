@@ -1,0 +1,132 @@
+---
+title: "Cleaning Script"
+format: html
+editor: visual
+---
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+
+# Read in data and converting missing data to NA values
+
+clean_coral <- read_csv(here::here("data", "updated_coral_tidy_2013-2024.csv"), na = c("UK", "MK", "?", "MD", "US", "NS", "MissingObs", "Na", "NA"))
+
+# Coral color way - consistent across all visualizations
+
+coral_colors <- c(
+ Acr = "blue", 
+ Poc = "red", 
+ Por = "darkgreen", 
+ Mil = "darkorange"
+)
+
+clean_coral <- clean_coral |> 
+  # Removing plots from backreef surveys 
+  filter(str_detect(transect, "T")) |> 
+# Change volume variables to numeric
+  mutate(
+    height = as.numeric(height),
+    width  = as.numeric(width),
+    length = as.numeric(length),
+      # Create volume (cm^2), z (m), and y (m) columns  
+     y_m = y / 100, 
+     z_m = z /100, 
+    # Acropora were input as "A" in 2024, converting to "Acr" 
+    taxa = case_when(taxa == "A" ~ "Acr", 
+                     TRUE ~ taxa)) 
+    
+
+
+```
+
+# Create functions to calculate volumes
+
+```{r}
+# Sphere volume
+sph_vol <- function(l, w, h){
+  r = (l + w + h)/ 3 / 2
+  v = r^3 * pi * (4/3)
+return(v)
+}
+
+# Hemisphere volume
+hemi_sph_vol <- function(l, w, h){
+  r = (l + w + h)/ 3 / 2
+  v = r^3 * pi * (2/3)
+return(v)
+}
+
+# Cylinder volume
+cyl_vol <- function(l, w, h){
+  r = ((l + w)/2)/2
+  v = r^2 * pi * h
+return(v)
+}
+
+
+```
+
+# Calculate volume
+
+```{r}
+# Calculate volume of pocillopera:
+coral_volume_poc <- clean_coral %>% 
+  filter(taxa == "Poc") %>% 
+  rowwise() %>% 
+  mutate(volume = sph_vol(length, width, height)) %>% 
+  ungroup()
+
+coral_volume_por <- clean_coral %>% 
+  filter(taxa == "Por") %>% 
+  rowwise() %>% 
+  mutate(volume = hemi_sph_vol(length, width, height)) %>% 
+  ungroup()
+
+coral_volume <- clean_coral %>% 
+  filter(taxa != "Poc" & taxa != "Por") %>% 
+  rowwise() %>% 
+  mutate(volume = cyl_vol(length, width, height)) %>% 
+  ungroup()
+
+coral_volume_mod <- rbind(coral_volume_poc, coral_volume_por, coral_volume)
+```
+
+```{r}
+
+```
+
+```{r}
+# To use for referencing initial & final volumes
+volume_coral <- coral_volume_mod |> 
+  arrange(coral_number, year) |> 
+  group_by(coral_number) |> 
+  mutate(
+    size_t_minus1 = lag(volume),
+    size_t0 = volume,
+    size_t1 = lead(volume))
+
+write_csv(clean_coral, file = "data/clean_corals.csv")
+write_csv(volume_coral, file = "data/volume_corals.csv")
+
+```
+
+
+
+
+```{r}
+# coral_volume_mod %>% 
+#   mutate(recruit_year = 
+#            case_when(
+#              dyn_recruitment == 1 ~ 
+#            )
+#            )
+
+view(clean_coral %>% 
+  group_by(coral_number)%>% 
+  summarize(recruitment = sum(dyn_recruitment)) %>% 
+  filter(recruitment > 1))
+```
+

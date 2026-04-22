@@ -41,7 +41,9 @@ clean_coral <- clean_coral |>
 
 
 ```
+
 # Create functions to calculate volumes
+
 ```{r}
 # Sphere volume
 sph_vol <- function(l, w, h){
@@ -68,6 +70,7 @@ return(v)
 ```
 
 # Calculate volume
+
 ```{r}
 # Calculate volume of pocillopera:
 coral_volume_poc <- clean_coral %>% 
@@ -94,7 +97,6 @@ coral_volume_mod <- rbind(coral_volume_poc, coral_volume_por, coral_volume)
 ```{r}
 
 ```
-
 
 ```{r}
 # To use for referencing initial & final volumes
