@@ -10,7 +10,7 @@ library(readxl)
 library(here)
 library(janitor)
 
-wide_data_2013_2023 <- read_excel(here("rawdata", "coral_raw_wide_2013-2023_v2.xlsx"), sheet = 1)
+wide_data_2013_2023 <- read_excel(here("rawdata", "Coral_Deomography_allyears_2013-24_V1.xlsx"), sheet = 1)
 
 individual_files <- list.files("rawdata/2024sheets", pattern = "*.xlsx", full.names = TRUE)
 
@@ -37,3 +37,61 @@ df <- bind_rows(lapply(individual_files, read_file)) %>%
   mutate(year = 2024) %>% 
   clean_names()
 ```
+
+
+```{r}
+wide_data_2013_2023 %>% 
+  pivot_longer(c("W2013", "W2014"), names_to = "Year", values_to = c("w"))
+```
+
+```{r}
+long_data <- wide_data_2013_2023 %>%
+  select(!contains("24")) %>% 
+  pivot_longer(cols = -c(1:8), names_to = c(".value", "year"), names_pattern = "(.*)(\\d{4}$)") %>% 
+  filter(!is.na(year))
+```
+
+```{r}
+long_data_t <- long_data %>% 
+  filter(str_detect(transect, "T"))
+```
+
+
+```{r}
+pivot_test2 <- long_data_t %>% 
+  separate_rows(dynamics_, sep = ", ") %>%
+  mutate(present = case_when(
+    is.na(dynamics_) ~ 0,
+    TRUE ~ 1),
+    dynamics_ = case_when(
+                str_detect(dynamics_, "Fus") ~ "Fusion",
+                str_detect(dynamics_, "Fis") ~ "Fission",
+                TRUE ~ dynamics_
+                              
+      
+    )) %>% 
+  pivot_wider(names_from = dynamics_, values_from = present, names_prefix = "dyn_", values_fill = 0) %>% 
+  clean_names() %>% 
+  select(-c(dyn_na, dyn_missing_data, dyn_edge))
+```
+
+```{r}
+recruit_test <- pivot_test2 %>% 
+  group_by(coral_number) %>% 
+  summarize(recruit = sum(dyn_recruitment),
+            death = sum(dyn_death))
+```
+
+```{r}
+recruit_fix <- pivot_test2 %>% 
+  arrange(coral_number, year) %>% 
+  group_by(coral_number) %>% 
+  mutate(dyn_recruitment = if_else(cumsum(dyn_recruitment) > 1, 0, dyn_recruitment))
+```
+
+```{r}
+recruit_test2 <- recruit_fix %>% 
+  group_by(coral_number) %>% 
+  summarize(recruit = sum(recruitment))
+```
+
