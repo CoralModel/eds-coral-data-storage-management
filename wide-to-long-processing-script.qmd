@@ -62,7 +62,36 @@ pivot_test2 <- long_data_t %>%
   separate_rows(dynamics_, sep = ", ") %>%
   mutate(present = case_when(
     is.na(dynamics_) ~ 0,
-    TRUE ~ 1)) %>% 
-  pivot_wider(names_from = dynamics_, values_from = present, names_prefix = "dyn_", values_fill = 0)
+    TRUE ~ 1),
+    dynamics_ = case_when(
+                str_detect(dynamics_, "Fus") ~ "Fusion",
+                str_detect(dynamics_, "Fis") ~ "Fission",
+                TRUE ~ dynamics_
+                              
+      
+    )) %>% 
+  pivot_wider(names_from = dynamics_, values_from = present, names_prefix = "dyn_", values_fill = 0) %>% 
+  clean_names() %>% 
+  select(-c(dyn_na, dyn_missing_data, dyn_edge))
+```
+
+```{r}
+recruit_test <- pivot_test2 %>% 
+  group_by(coral_number) %>% 
+  summarize(recruit = sum(dyn_recruitment),
+            death = sum(dyn_death))
+```
+
+```{r}
+recruit_fix <- pivot_test2 %>% 
+  arrange(coral_number, year) %>% 
+  group_by(coral_number) %>% 
+  mutate(dyn_recruitment = if_else(cumsum(dyn_recruitment) > 1, 0, dyn_recruitment))
+```
+
+```{r}
+recruit_test2 <- recruit_fix %>% 
+  group_by(coral_number) %>% 
+  summarize(recruit = sum(recruitment))
 ```
 
