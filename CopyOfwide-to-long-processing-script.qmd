@@ -1,0 +1,53 @@
+---
+title: "Coral Demography Data Cleaning"
+format: html
+editor: visual
+---
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(here)
+library(janitor)
+
+wide_data_2013_2023 <- read_excel(here("rawdata", "coral_raw_wide_2013-2023_v2.xlsx"), sheet = 1)
+
+individual_files <- list.files("rawdata/2024sheets", pattern = "*.xlsx", full.names = TRUE)
+
+read_file <- function(f) {
+  meta <- read_excel(f, col_names = FALSE, n_max = 1)
+  obs <- tail(na.omit(as.character(meta[1, ])), 1)
+  read_excel(f, skip = 1, col_names = TRUE, col_types = "text") %>%
+    mutate(Observer = obs)
+}
+
+df <- bind_rows(lapply(individual_files, read_file)) %>%
+    select(-c("W", "H", "L", "Status"))  %>%
+  rename(habitat = Hab,
+    transect = Tran) %>%
+  mutate(l = coalesce(L2024, L24),
+         w = coalesce(W2024, W24),
+         h = coalesce(H2024, H24),
+         dynamics = coalesce(Dynam, Dynamic, Dyn, Dynamics),
+         across(c(X, Y, Z, l, w, h), as.numeric)
+  ) %>%
+  select(-any_of(c("L2024", "W2024", "H2024", "L24", "W24", "H24",
+                   "Dynam", "Dynamic", "Dyn", "Dynamics", "...17",
+                   "status", "source_file"))) %>%
+  mutate(year = 2024) %>% 
+  clean_names()
+
+
+recruit_ <- df %>%
+  group_by(coral_id) %>%
+  mutate(
+    dyn_recruitment = as.integer(
+      dyn_recruitment == 1 & cumsum(dyn_recruitment == 1) == 1
+    ),
+    dyn_death = as.integer(
+      dyn_death == 1 & rev(cumsum(rev(dyn_death == 1))) == 1
+    )
+  ) %>%
+  ungroup()
+
+```
