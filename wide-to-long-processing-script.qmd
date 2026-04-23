@@ -53,20 +53,16 @@ long_data <- wide_data_2013_2023 %>%
 
 ```{r}
 long_data_t <- long_data %>% 
-  filter(str_detect(transect, "T")) %>% 
-  mutate(present = case_when(
-    str_detect(dynamics_, "Death") ~ 1,
-    str_detect(dynamics_, "Recruitment") ~ 1,
-    TRUE ~ 0
-  ))
-
+  filter(str_detect(transect, "T"))
 ```
 
 
 ```{r}
 pivot_test2 <- long_data_t %>% 
-  separate_rows(dynamics_, sep = ",") %>% 
-  mutate(other_dyn = dynamics_, value = 1) %>% 
-  pivot_wider(names_from = dynamics_, values_from = present, names_prefix = "dyn_")
+  separate_rows(dynamics_, sep = ", ") %>%
+  mutate(present = case_when(
+    is.na(dynamics_) ~ 0,
+    TRUE ~ 1)) %>% 
+  pivot_wider(names_from = dynamics_, values_from = present, names_prefix = "dyn_", values_fill = 0)
 ```
 
