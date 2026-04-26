@@ -38,7 +38,6 @@ df <- bind_rows(lapply(individual_files, read_file)) %>%
   clean_names()
 ```
 
-
 ```{r}
 wide_data_2013_2023 %>% 
   pivot_longer(c("W2013", "W2014"), names_to = "Year", values_to = c("w"))
@@ -55,7 +54,6 @@ long_data <- wide_data_2013_2023 %>%
 long_data_t <- long_data %>% 
   filter(str_detect(transect, "T"))
 ```
-
 
 ```{r}
 pivot_test2 <- long_data_t %>% 
@@ -86,7 +84,8 @@ recruit_test <- pivot_test2 %>%
 recruit_fix <- pivot_test2 %>% 
   arrange(coral_number, year) %>% 
   group_by(coral_number) %>% 
-  mutate(dyn_recruitment = if_else(cumsum(dyn_recruitment) > 1, 0, dyn_recruitment))
+  mutate(dyn_recruitment = if_else(cumsum(dyn_recruitment) > 1, 0, dyn_recruitment), 
+         year = as.numeric(year))
 ```
 
 ```{r}
@@ -95,5 +94,39 @@ death_test <- recruit_fix %>%
   mutate(death = sum(dyn_death)) %>% 
   filter(death > 1) %>% 
   select(coral_number, year, l, w, h, dyn_death)
+
+
 ```
 
+```{r}
+
+coral_test <- recruit_fix %>%
+  mutate(recruit_year = case_when(
+    dyn_recruitment == 1 ~ year,
+    TRUE ~ NA) 
+    # transect = case_when(
+    #        str_detect(transect, "1") ~ "T1",
+    #        str_detect(transect, "2") ~ "T2",
+    #        str_detect(transect, "3") ~ "T3",
+    #        str_detect(transect, "4") ~ "T4",
+    #      )
+  ) %>% 
+  group_by(coral_number) %>% 
+  mutate(recruit_year = sum(recruit_year, na.rm = TRUE)) %>% 
+  mutate(recruit_year = case_when(
+    recruit_year == 0 ~ 2013,
+    TRUE ~ recruit_year
+  ),
+  coral_id = str_c(site, habitat, transect, x, y, z, recruit_year, sep = "_"), 
+  transect_id = str_c(site, habitat, transect, sep = "_"))
+
+
+duplicate_corals <- coral_df %>% 
+  group_by(site, habitat, transect, taxa, x, y, z) %>% 
+  summarise(count = n()) %>% 
+  filter(count > 1) %>% 
+  ungroup() %>% 
+  arrange(desc(count)) %>% 
+  select(-count)
+         
+```
