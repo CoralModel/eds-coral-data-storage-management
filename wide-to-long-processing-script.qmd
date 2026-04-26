@@ -88,7 +88,9 @@ recruit_fix <- pivot_test2 %>%
 ```
 
 ```{r}
-recruit_test2 <- recruit_fix %>% 
+death_test <- recruit_fix %>% 
   group_by(coral_number) %>% 
-  summarize(recruit = sum(recruitment))
+  mutate(death = sum(dyn_death)) %>% 
+  filter(death > 1) %>% 
+  select(coral_number, year, l, w, h, dyn_death)
 ```
