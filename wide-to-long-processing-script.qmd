@@ -38,7 +38,6 @@ df <- bind_rows(lapply(individual_files, read_file)) %>%
   clean_names()
 ```
 
-
 ```{r}
 wide_data_2013_2023 %>% 
   pivot_longer(c("W2013", "W2014"), names_to = "Year", values_to = c("w"))
@@ -55,7 +54,6 @@ long_data <- wide_data_2013_2023 %>%
 long_data_t <- long_data %>% 
   filter(str_detect(transect, "T"))
 ```
-
 
 ```{r}
 pivot_test2 <- long_data_t %>% 
@@ -94,4 +92,3 @@ recruit_test2 <- recruit_fix %>%
   group_by(coral_number) %>% 
   summarize(recruit = sum(recruitment))
 ```
-
