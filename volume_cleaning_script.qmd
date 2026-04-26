@@ -1,11 +1,46 @@
 ---
-title: "Volume Cleaning Script"
+title: "Coral Demography Volume Cleaning Script "
+author: Kylie Newcomer, Joaquin Sandoval, Vedika Shirtekar 
+date: 4/19/2026
 format: html
 editor: visual
---- %>% %>% 
 ---
 
+This script further cleans, standardizes, and prepares `updated_coral_tidy_2013-2024.csv` for downstream GLMM analysis, profile figures, and transect-level spatiotemporal visualizations. The input file was obtained after initial raw data processing by Dr. Hunter Lenihand and Ryan Anderson.
+
+**Data Cleaning**
+
+- Standardizes missing and ambiguous character values (`MD`, `UK`, `MK`, `?`, `MissingObs`, `Na`, `NA`, `Missing Data MD (Not sampled in 2017)`) to R `NA`
+
+- Converts measurement columns to numeric after character removal
+
+- Filters to transect data only, excluding backreef plots
+
+- Converts `y` and `z` dimensions from meters to centimeters for downstream visualizations
+
+**Variable Construction**
+
+- Reassigns updated transect versions to a unified transect column
+
+- Creates a unique transect ID
+
+- Creates a bleaching period indicator: `0` = prior (2013–2018), `1` = post (2019–2024)
+
+- Sources volume formulas from the `R/` folder to calculate colony volume by taxa: cylinder (*Acropora*), hemisphere *Porites*), sphere (*Pocillopora*)
+
+- Creates lagged size variables: `size_t_minus1` (previous year), `size_t0` (current year), `size_t1` (following year)
+
+**Coral Identity Validation**
+
+- Checks for duplicate `coral_number` usage across distinct individuals — if a coral dies and a new recruit settles at the same coordinates, the same `coral_number` may reappear after a gap
+
+- Appends the first observed year to `coral_number` (`site_habitat_transect_x_y_z_firstyear`) to uniquely identify individuals
+
+- If a coral with the same `coral_number` decreases in size by \>95% between consecutive years, it is split into two separate coral numbers, as this likely represents a new individual
+
 ```{r}
+#| message : false
+
 library(tidyverse)
 
 coral_colors <- c(
@@ -19,7 +54,7 @@ coral_colors <- c(
 ```{r}
 # Read in data, converting missing codes to NA
 clean_coral <- read_csv(
-  here::here("data", "updated_coral_tidy_2013-2024.csv"),
+  here::here("rawdata", "updated_coral_tidy_2013-2024.csv"),
   na = c("UK", "MK", "?", "MD", "US", "NS", "MissingObs", "Na", "NA")
 ) %>%
   # Remove backreef plots, keep only transect surveys
@@ -48,8 +83,6 @@ clean_coral <- read_csv(
     year < 2019 ~ 0,
     TRUE ~ 1
   ),
-
-  
   )
 ```
 
@@ -91,7 +124,43 @@ volume_coral <- clean_coral %>%
     size_t1       = lead(size_t0)
   ) %>%
   ungroup()
+```
 
+For each coral, look at its years in order and check if there's ever a jump of more than 1 year between observations. If so, keep all rows for that coral. The result is a dataset of only the corals that "disappeared" for at least one survey year and reappeared later - this would indicate recruitment of the same species at the exact location where another had died.
+
+```{r}
+# For each coral_number, check if years are non-consecutive (gap = died & same species recruited)
+gaps <- volume_coral |>
+  arrange(coral_number, year) |>
+  group_by(coral_number) |>
+  filter(any(diff(year) > 1)) |> # any() Given set of logical vectors, is at least one value true? 
+  ungroup()                      # diff() calculates difference between years 
+  
+
+# total number of instances where this took place 
+n_distinct(gaps$coral_number)
+
+```
+
+```{r}
+# Flag coral_numbers where size drops dramatically (e.g., large coral -> tiny recruit)
+resets <- volume_coral |>
+  select(year, site, habitat, transect_id, coral_number, size_t0, size_t1) %>% 
+  arrange(coral_number, year) |>
+  group_by(coral_number) |>
+  mutate(pct_change = (size_t1 - size_t0) / size_t0) |>
+  filter(pct_change < -0.95) |>
+  ungroup()
+
+reset_ids <- resets |> pull(coral_number) |> unique()
+
+resets <- volume_coral |>
+  filter(coral_number %in% reset_ids) |>
+  select(year, coral_number, size_t0, size_t1, dyn_death, dyn_recruitment) |>
+  arrange(coral_number, year)
+```
+
+```{r}
 write_csv(clean_coral,  here::here("data", "clean_corals.csv"))
 write_csv(volume_coral, here::here("data", "volume_corals.csv"))
 ```
