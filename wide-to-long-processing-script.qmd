@@ -103,13 +103,14 @@ death_test <- recruit_fix %>%
 coral_test <- recruit_fix %>%
   mutate(recruit_year = case_when(
     dyn_recruitment == 1 ~ year,
-    TRUE ~ NA) 
-    # transect = case_when(
-    #        str_detect(transect, "1") ~ "T1",
-    #        str_detect(transect, "2") ~ "T2",
-    #        str_detect(transect, "3") ~ "T3",
-    #        str_detect(transect, "4") ~ "T4",
-    #      )
+    TRUE ~ NA),
+     transect = case_when(coral_number %in% c(1347: 1353) ~ "T01",
+                          coral_number %in% c(1361: 1363) ~ "T01", 
+                          coral_number %in% c(1366: 1376) ~ "T01", 
+                          coral_number %in% c(1466: 1483) ~ "T01",
+                          coral_number == 1863 ~ "T04",
+                          coral_number == 1872 ~ "T04", 
+                          TRUE ~ transect)
   ) %>% 
   group_by(coral_number) %>% 
   mutate(recruit_year = sum(recruit_year, na.rm = TRUE)) %>% 
@@ -121,12 +122,12 @@ coral_test <- recruit_fix %>%
   transect_id = str_c(site, habitat, transect, sep = "_"))
 
 
-duplicate_corals <- coral_df %>% 
-  group_by(site, habitat, transect, taxa, x, y, z) %>% 
-  summarise(count = n()) %>% 
-  filter(count > 1) %>% 
-  ungroup() %>% 
-  arrange(desc(count)) %>% 
-  select(-count)
-         
+coral_test %>% 
+  filter(coral_number == 1247)
+
+
+  
+ 
+ 
+ 
 ```
