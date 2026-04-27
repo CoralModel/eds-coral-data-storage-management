@@ -97,8 +97,7 @@ death_test <- recruit_fix %>%
 
 
 ```
-<<<<<<< HEAD
-=======
+
 
 ```{r}
 
@@ -132,4 +131,4 @@ duplicate_corals <- coral_df %>%
   select(-count)
          
 ```
->>>>>>> 6ad7e1bc7298019f3334ea4872c061387ca1430c
+
