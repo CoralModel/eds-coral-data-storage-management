@@ -1,5 +1,4 @@
 rawdata/
-data_raw_2024_sheets/
 # History files
 .Rhistory
 .Rapp.history
@@ -51,3 +50,4 @@ po/*~
 rsconnect/
 
 .DS_Store
+.positai
