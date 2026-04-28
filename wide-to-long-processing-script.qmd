@@ -118,15 +118,20 @@ coral_test <- recruit_fix %>%
     recruit_year == 0 ~ 2013,
     TRUE ~ recruit_year
   ),
-  coral_id = str_c(site, habitat, transect, x, y, z, recruit_year, sep = "_"), 
-  transect_id = str_c(site, habitat, transect, sep = "_"))
+  coral_id = str_c(site, habitat, transect, x, y, z, sep = "_"), 
+  transect_id = str_c(site, habitat, transect, sep = "_"),
+  l = as.numeric(l),
+  w = as.numeric(w),
+  h = as.numeric(h))
 
+df_coral_id <- df %>% 
+  mutate(coral_id = str_c(site, habitat, transect, x, y, z, sep = "_"))
 
 coral_test %>% 
   filter(coral_number == 1247)
 
 
-  
+corals_all <- rbind(coral_test, df_coral_id)
  
  
  
