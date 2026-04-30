@@ -1,0 +1,164 @@
+---
+title: "Coral Demography Data Cleaning"
+format: html
+editor: visual
+---
+
+```{r}
+#| warning: false
+#| message: false
+
+library(tidyverse)
+library(readxl)
+library(here)
+library(janitor)
+
+wide_data_2013_2023 <- read_excel(here("rawdata", "Coral_Deomography_allyears_2013-24_V1.xlsx"), sheet = 1)
+
+individual_files <- list.files("rawdata/2024sheets", pattern = "*.xlsx", full.names = TRUE)
+
+read_file <- function(f) {
+  meta <- read_excel(f, col_names = FALSE, n_max = 1)
+  obs <- tail(na.omit(as.character(meta[1, ])), 1)
+  read_excel(f, skip = 1, col_names = TRUE, col_types = "text") %>%
+    mutate(Observer = obs)
+}
+
+df <- bind_rows(lapply(individual_files, read_file)) %>%
+    select(-c("W", "H", "L", "Status"))  %>%
+  rename(habitat = Hab,
+    transect = Tran) %>%
+  mutate(L2024 = coalesce(L2024, L24),
+         W2024 = coalesce(W2024, W24),
+         H2024 = coalesce(H2024, H24),
+         Dynamics_2024 = coalesce(Dynam, Dynamic, Dyn, Dynamics),
+         across(c(X, Y, Z), as.numeric)
+  ) %>%
+  select(-any_of(c("L24", "W24", "H24",
+                   "Dynam", "Dynamic", "Dyn", "Dynamics", "...17",
+                   "status", "source_file"))) %>% 
+  #mutate(year = 2024) %>% 
+  clean_names()
+
+
+```
+
+```{r}
+all_corals %>% 
+  filter(is.na(coral_number))
+```
+
+```{r}
+wide_data <- wide_data_2013_2023 %>%
+  select(!contains("24"))
+
+all_corals <- full_join(wide_data, df, by = c("site", "habitat", "transect", "taxa", "x", "y", "z")) %>% 
+  filter(is.na(site)) %>% 
+  clean_names()
+```
+
+```{r}
+coral_number_test <- all_corals %>% 
+  arrange(coral_number) %>% 
+  mutate(coral_number = if_else(is.na(coral_number), 
+                                 row_number(), 
+                                 coral_number))
+  
+```
+
+```{r}
+all_corals %>% 
+  filter(is.na(site))
+```
+
+
+```{r}
+long_data <- all_corals %>%
+  #select(!contains("24")) %>% 
+  pivot_longer(cols = -c(1:8), names_to = c(".value", "year"), names_pattern = "(.*)(\\d{4}$)") %>% 
+  filter(!is.na(year), str_detect(transect, "T"))
+```
+
+
+```{r}
+pivot_test2 <- long_data %>% 
+  separate_rows(dynamics_, sep = ", ") %>%
+  mutate(present = case_when(
+    is.na(dynamics_) ~ 0,
+    TRUE ~ 1),
+    dynamics_ = case_when(
+                str_detect(dynamics_, "Fus") ~ "Fusion",
+                str_detect(dynamics_, "Fis") ~ "Fission",
+                TRUE ~ dynamics_
+    )) %>% 
+  pivot_wider(names_from = dynamics_, values_from = present, names_prefix = "dyn_", values_fill = 0) %>% 
+  clean_names() %>% 
+  select(-c(dyn_na, dyn_missing_data, dyn_edge))
+```
+
+```{r}
+recruit_test <- pivot_test2 %>% 
+  group_by(coral_number) %>% 
+  summarize(recruit = sum(dyn_recruitment),
+            death = sum(dyn_death))
+```
+
+```{r}
+recruit_fix <- pivot_test2 %>% 
+  arrange(coral_number, year) %>% 
+  group_by(coral_number) %>% 
+  mutate(dyn_recruitment = if_else(cumsum(dyn_recruitment) > 1, 0, dyn_recruitment), 
+         year = as.numeric(year))
+```
+
+```{r}
+death_test <- recruit_fix %>% 
+  group_by(coral_number) %>% 
+  mutate(death = sum(dyn_death)) %>% 
+  filter(death > 1) %>% 
+  select(coral_number, year, l, w, h, dyn_death)
+
+
+```
+
+```{r}
+
+coral_test <- recruit_fix %>%
+  mutate(recruit_year = case_when(
+    dyn_recruitment == 1 ~ year,
+    TRUE ~ NA),
+     transect = case_when(coral_number %in% c(1347: 1353) ~ "T01",
+                          coral_number %in% c(1361: 1363) ~ "T01", 
+                          coral_number %in% c(1366: 1376) ~ "T01", 
+                          coral_number %in% c(1466: 1483) ~ "T01",
+                          coral_number == 1863 ~ "T04",
+                          coral_number == 1872 ~ "T04", 
+                          TRUE ~ transect)
+  ) %>% 
+  group_by(coral_number) %>% 
+  mutate(recruit_year = sum(recruit_year, na.rm = TRUE)) %>% 
+  mutate(recruit_year = case_when(
+    recruit_year == 0 ~ 2013,
+    TRUE ~ recruit_year
+  ),
+  coral_id = str_c(site, habitat, transect, x, y, z, sep = "_"), 
+  transect_id = str_c(site, habitat, transect, sep = "_"),
+  l = as.numeric(l),
+  w = as.numeric(w),
+  h = as.numeric(h))
+
+df_coral_id <- df %>% 
+  mutate(coral_id = str_c(site, habitat, transect, x, y, z, sep = "_"))
+
+coral_test %>% 
+  filter(coral_number == 1247)
+
+
+corals_all <- rbind(coral_test, df_coral_id)
+ 
+
+```
+
+```{r}
+
+```
