@@ -5,14 +5,15 @@ editor: visual
 ---
 
 ```{r}
+#| warning: false
 library(tidyverse)
 library(readxl)
 library(here)
 library(janitor)
 
-wide_data_2013_2023 <- read_excel(here("data", "data_raw_2024_sheets", "Coral_Deomography_allyears_2013-24_V1.xlsx"), sheet = 1)
+wide_data_2013_2023 <- read_excel("~/MEDS/capstone/eds-coral-data-storage-management/data/data_raw_2024_sheets/Coral_Deomography_allyears_2013-24_V1.xlsx", sheet = 1)
 
-individual_files <- list.files("data/data_raw_2024_sheets", pattern = "*.xlsx", full.names = TRUE)
+individual_files <- list.files("rawdata/2024sheets", pattern = "*.xlsx", full.names = TRUE)
 
 read_file <- function(f) {
   meta <- read_excel(f, col_names = FALSE, n_max = 1)
@@ -22,20 +23,26 @@ read_file <- function(f) {
 }
 
 df <- bind_rows(lapply(individual_files, read_file)) %>%
-    select(-c("W", "H", "L", "Status"))  %>%
-  rename(habitat = Hab,
-    transect = Tran) %>%
-  mutate(l = coalesce(L2024, L24),
-         w = coalesce(W2024, W24),
-         h = coalesce(H2024, H24),
-         dynamics = coalesce(Dynam, Dynamic, Dyn, Dynamics),
-         across(c(X, Y, Z, l, w, h), as.numeric)
-  ) %>%
-  select(-any_of(c("L2024", "W2024", "H2024", "L24", "W24", "H24",
-                   "Dynam", "Dynamic", "Dyn", "Dynamics", "...17",
-                   "status", "source_file"))) %>%
-  mutate(year = 2024) %>% 
-  clean_names()
+    select(-any_of(c("W", "H", "L", "Status"))) %>%
+    rename(any_of(c(habitat = "Hab", transect = "Tran"))) %>%
+    mutate(
+        l = coalesce(if("L2024" %in% names(.)) L2024 else NA_character_,
+                     if("L24" %in% names(.)) L24 else NA_character_),
+        w = coalesce(if("W2024" %in% names(.)) W2024 else NA_character_,
+                     if("W24" %in% names(.)) W24 else NA_character_),
+        h = coalesce(if("H2024" %in% names(.)) H2024 else NA_character_,
+                     if("H24" %in% names(.)) H24 else NA_character_),
+        dynamics = coalesce(if("Dynam" %in% names(.)) Dynam else NA_character_,
+                            if("Dynamic" %in% names(.)) Dynamic else NA_character_,
+                            if("Dyn" %in% names(.)) Dyn else NA_character_,
+                            if("Dynamics" %in% names(.)) Dynamics else NA_character_),
+        across(any_of(c("X", "Y", "Z", "l", "w", "h")), as.numeric)
+    ) %>%
+    select(-any_of(c("L2024", "W2024", "H2024", "L24", "W24", "H24",
+                     "Dynam", "Dynamic", "Dyn", "Dynamics", "...17",
+                     "status", "source_file"))) %>%
+    mutate(year = 2024) %>%
+    clean_names()
 ```
 
 ```{r}
@@ -95,6 +102,7 @@ death_test <- recruit_fix %>%
   filter(death > 1) %>% 
   select(coral_number, year, l, w, h, dyn_death)
 
+
 ```
 
 ```{r}
@@ -102,13 +110,14 @@ death_test <- recruit_fix %>%
 coral_test <- recruit_fix %>%
   mutate(recruit_year = case_when(
     dyn_recruitment == 1 ~ year,
-    TRUE ~ NA) 
-    # transect = case_when(
-    #        str_detect(transect, "1") ~ "T1",
-    #        str_detect(transect, "2") ~ "T2",
-    #        str_detect(transect, "3") ~ "T3",
-    #        str_detect(transect, "4") ~ "T4",
-    #      )
+    TRUE ~ NA),
+     transect = case_when(coral_number %in% c(1347: 1353) ~ "T01",
+                          coral_number %in% c(1361: 1363) ~ "T01", 
+                          coral_number %in% c(1366: 1376) ~ "T01", 
+                          coral_number %in% c(1466: 1483) ~ "T01",
+                          coral_number == 1863 ~ "T04",
+                          coral_number == 1872 ~ "T04", 
+                          TRUE ~ transect)
   ) %>% 
   group_by(coral_number) %>% 
   mutate(recruit_year = sum(recruit_year, na.rm = TRUE)) %>% 
@@ -120,12 +129,7 @@ coral_test <- recruit_fix %>%
   transect_id = str_c(site, habitat, transect, sep = "_"))
 
 
-duplicate_corals <- coral_df %>% 
-  group_by(site, habitat, transect, taxa, x, y, z) %>% 
-  summarise(count = n()) %>% 
-  filter(count > 1) %>% 
-  ungroup() %>% 
-  arrange(desc(count)) %>% 
-  select(-count)
-      
+coral_test %>% 
+  filter(coral_number == 1247)
+ 
 ```
