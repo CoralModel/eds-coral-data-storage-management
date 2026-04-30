@@ -24,7 +24,7 @@ read_file <- function(f) {
     mutate(Observer = obs)
 }
 
-df <- bind_rows(lapply(individual_files, read_file)) %>%
+corals_2024 <- bind_rows(lapply(individual_files, read_file)) %>%
     select(-c("W", "H", "L", "Status"))  %>%
   rename(habitat = Hab,
     transect = Tran) %>%
@@ -39,49 +39,39 @@ df <- bind_rows(lapply(individual_files, read_file)) %>%
                    "status", "source_file"))) %>% 
   #mutate(year = 2024) %>% 
   clean_names()
-
-
 ```
 
 ```{r}
-all_corals %>% 
-  filter(is.na(coral_number))
-```
+wide_data_no_2024 <- wide_data_2013_2023 %>%
+  select(!contains("24")) # Remove 2024 columns because they have no data
 
-```{r}
-wide_data <- wide_data_2013_2023 %>%
-  select(!contains("24"))
-
-all_corals <- full_join(wide_data, df, by = c("site", "habitat", "transect", "taxa", "x", "y", "z")) %>% 
-  filter(is.na(site)) %>% 
+all_corals <- full_join(wide_data_no_2024, corals_2024, by = c("site", "habitat", "transect", "taxa", "x", "y", "z")) %>% 
+  filter(!is.na(site)) %>% 
   clean_names()
 ```
 
 ```{r}
-coral_number_test <- all_corals %>% 
+# Create new coral numbers for 2024 recruits
+new_coral_numbers <- all_corals %>% 
   arrange(coral_number) %>% 
   mutate(coral_number = if_else(is.na(coral_number), 
-                                 row_number(), 
+                                 row_number(), # assign all new recruits a coral number
                                  coral_number))
-  
-```
 
-```{r}
-all_corals %>% 
-  filter(is.na(site))
+# Check that each row got a unqiue coral number
+length(unique(new_coral_numbers$coral_number))
 ```
 
 
 ```{r}
-long_data <- all_corals %>%
-  #select(!contains("24")) %>% 
+corals_long <- new_coral_numbers %>%
   pivot_longer(cols = -c(1:8), names_to = c(".value", "year"), names_pattern = "(.*)(\\d{4}$)") %>% 
-  filter(!is.na(year), str_detect(transect, "T"))
+  filter(!is.na(year))
 ```
 
 
 ```{r}
-pivot_test2 <- long_data %>% 
+corals_long_with_dyn <- corals_long %>%
   separate_rows(dynamics_, sep = ", ") %>%
   mutate(present = case_when(
     is.na(dynamics_) ~ 0,
@@ -90,71 +80,95 @@ pivot_test2 <- long_data %>%
                 str_detect(dynamics_, "Fus") ~ "Fusion",
                 str_detect(dynamics_, "Fis") ~ "Fission",
                 TRUE ~ dynamics_
-    )) %>% 
+    ),
+    across(c(year, l, w, h), as.numeric),
+    
+    # Correct corals that were identified as being on the wrong transect
+    transect = case_when(coral_number %in% c(1347: 1353) ~ "T01",
+                          coral_number %in% c(1361: 1363) ~ "T01", 
+                          coral_number %in% c(1366: 1376) ~ "T01", 
+                          coral_number %in% c(1466: 1483) ~ "T01",
+                          coral_number == 1863 ~ "T04",
+                          coral_number == 1872 ~ "T04", 
+                          TRUE ~ transect)) %>% 
   pivot_wider(names_from = dynamics_, values_from = present, names_prefix = "dyn_", values_fill = 0) %>% 
   clean_names() %>% 
   select(-c(dyn_na, dyn_missing_data, dyn_edge))
 ```
 
 ```{r}
-recruit_test <- pivot_test2 %>% 
-  group_by(coral_number) %>% 
-  summarize(recruit = sum(dyn_recruitment),
-            death = sum(dyn_death))
-```
-
-```{r}
-recruit_fix <- pivot_test2 %>% 
+recruit_fix <- corals_long_with_dyn %>% 
   arrange(coral_number, year) %>% 
   group_by(coral_number) %>% 
-  mutate(dyn_recruitment = if_else(cumsum(dyn_recruitment) > 1, 0, dyn_recruitment), 
-         year = as.numeric(year))
+  mutate(dyn_recruitment = if_else(cumsum(dyn_recruitment) > 1, 0, dyn_recruitment),
+         # death_year = case_when(
+         #   dyn_death == 1 ~ year,
+         #   TRUE ~ NA),
+         # year_diff = c((diff(death_year)), NA), # Find difference in years of death
+         # dyn_death = ifelse(year_diff == 1, 0, dyn_death)
+  )
 ```
+
+
 
 ```{r}
 death_test <- recruit_fix %>% 
   group_by(coral_number) %>% 
-  mutate(death = sum(dyn_death)) %>% 
+  mutate(death = sum(dyn_death),
+         death_year = case_when(
+           dyn_death == 1 ~ year,
+           TRUE ~ NA)) %>% 
   filter(death > 1) %>% 
-  select(coral_number, year, l, w, h, dyn_death)
+  mutate(year_diff = c(diff(death_year), NA)) %>%
+
+  select(coral_number, year, l, w, h, dyn_death, death_year, note)
 
 
 ```
 
 ```{r}
+death_fix <- recruit_fix %>% 
+  arrange(coral_number, year) %>% 
+  group_by(coral_number) %>% 
+  mutate(death_year = case_when(
+    dyn_death == 1 ~ year,
+    TRUE ~ NA)) %>% 
+  summarize(death = sum(death_year, na.rm = TRUE)) %>% 
+  filter(death > 2024)
+```
 
-coral_test <- recruit_fix %>%
+```{r}
+death_correct <- death_test %>%
+  arrange(coral_number, year) %>% 
+  group_by(coral_number) %>% 
+  mutate(total_death = sum(dyn_death)) %>% 
+  filter(total_death > 1,
+         dyn_death == 1) %>% 
+  mutate(year_diff = diff(death_year),
+         dyn_death = ifelse(year_diff == 1 & cumsum(dyn_death) > 1, 0, dyn_death)
+  )
+
+death_correct %>%
+  arrange(coral_number, year) %>% 
+  group_by(coral_number) %>% 
+  mutate(total_death = sum(dyn_death)) %>% 
+  filter(total_death > 1,
+         dyn_death == 1)
+```
+
+
+```{r}
+corals_long_with_recruit <- recruit_fix %>%
   mutate(recruit_year = case_when(
     dyn_recruitment == 1 ~ year,
     TRUE ~ NA),
-     transect = case_when(coral_number %in% c(1347: 1353) ~ "T01",
-                          coral_number %in% c(1361: 1363) ~ "T01", 
-                          coral_number %in% c(1366: 1376) ~ "T01", 
-                          coral_number %in% c(1466: 1483) ~ "T01",
-                          coral_number == 1863 ~ "T04",
-                          coral_number == 1872 ~ "T04", 
-                          TRUE ~ transect)
   ) %>% 
   group_by(coral_number) %>% 
   mutate(recruit_year = sum(recruit_year, na.rm = TRUE)) %>% 
-  mutate(recruit_year = case_when(
-    recruit_year == 0 ~ 2013,
-    TRUE ~ recruit_year
-  ),
-  coral_id = str_c(site, habitat, transect, x, y, z, sep = "_"), 
-  transect_id = str_c(site, habitat, transect, sep = "_"),
-  l = as.numeric(l),
-  w = as.numeric(w),
-  h = as.numeric(h))
-
-df_coral_id <- df %>% 
-  mutate(coral_id = str_c(site, habitat, transect, x, y, z, sep = "_"))
-
-coral_test %>% 
-  filter(coral_number == 1247)
-
-
-corals_all <- rbind(coral_test, df_coral_id)
+  mutate(recruit_year = replace_values(recruit_year,
+    0 ~ 2013),
+  coral_id = str_c(site, habitat, transect, x, y, z, recruit_year, sep = "_"), 
+  transect_id = str_c(site, habitat, transect, sep = "_"))
  
 
 ```
