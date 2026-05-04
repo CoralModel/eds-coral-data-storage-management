@@ -132,6 +132,16 @@ recruit_fix <- corals_long_with_dyn %>%
 ```
 
 ```{r}
+recruit_fix_check <- recruit_fix %>%
+  group_by(coral_number) %>%
+  summarize(recruit_occurrences = sum(dyn_recruitment)) %>%
+  filter(recruit_occurrences > 1)
+
+nrow(recruit_fix_check)
+```
+
+
+```{r}
 death_check <- recruit_fix %>%
   group_by(coral_number) %>% 
   summarize(total_death = sum(dyn_death)) %>% 
@@ -156,7 +166,7 @@ death_correct <- recruit_fix %>%
   mutate(dyn_death = ifelse(dyn_death == 1 & lead(!is.na(l), n = 2) & year < 2022, 0, dyn_death)) %>% 
   mutate(
     # Create binary is measurements are recorded
-    has_measurements = !is.na(suppressWarnings(as.numeric(l))),
+    has_measurements = !is.na(suppressWarnings(l)),
     # Track whether coral has died at any point before
     died_before = lag(cumsum(dyn_death) >= 1, default = FALSE),
     # New life detected: measurements present AFTER a previous death
@@ -189,10 +199,9 @@ corals_long_with_coral_id <- death_correct %>%
   # Select the first year of measurements
   mutate(first_year = min(years_measure, na.rm = TRUE), 
          # Create new coral_id based on location, taxa, and first occurance
-  coral_id = str_c(site, habitat, transect, x, y, z, first_year, sep = "_"), 
+  coral_id = str_c(site, habitat, transect, taxa, x, y, z, first_year, sep = "_"), 
   transect_id = str_c(site, habitat, transect, sep = "_")) %>%
-  select(-c(years_measure, new_coral_number, first_year))
+  select(-c(years_measure, new_coral_number, coral_number, first_year, life_stage))
  
-
 ```
 
