@@ -214,6 +214,7 @@ death_correct %>%
 death_correct <- corals_long_with_dyn %>%
   arrange(coral_number, year) %>%
   group_by(coral_number) %>%
+  mutate(dyn_death = ifelse(dyn_death == 1 & lead(!is.na(l), n = 2) & year < 2022, 0, dyn_death)) %>% 
   mutate(
     # Does this row have real measurements? (numeric, not Dead/NA/UK)
     has_measurements = !is.na(suppressWarnings(as.numeric(l))),
@@ -221,49 +222,55 @@ death_correct <- corals_long_with_dyn %>%
     died_before = lag(cumsum(dyn_death) >= 1, default = FALSE),
     # New life detected: measurements present AFTER a previous death
     new_life = has_measurements & died_before,
-    
-    coral_number = case_when(
-      new_life == TRUE ~ paste(coral_number, "_n")
-    ),
     # Reset the "dead" status when a new life starts
-    life_stage = cumsum(new_life) + 1
+    life_stage = cumsum(new_life) + 1,
+        
+    new_coral_number = case_when(
+      life_stage > 1 ~ paste0(coral_number, "_n"),
+      TRUE ~ as.character(coral_number)
+    ),
   ) %>%
-  group_by(coral_number) %>%
+  group_by(new_coral_number) %>%
   # Within each life, keep only the first death
-  mutate(dyn_death = if_else(cumsum(dyn_death) > 1, 0, dyn_death)) 
+  mutate(dyn_death = if_else(cumsum(dyn_death) > 1, 0, dyn_death)) %>% 
   ungroup() %>%
   select(-has_measurements, -died_before, -new_life)
 
 
 death_sum <- death_correct %>% 
-  arrange(coral_number, year) %>%
-  group_by(coral_number) %>% 
+  arrange(new_coral_number, year) %>%
+  group_by(new_coral_number) %>% 
   mutate(death_year = case_when(
     dyn_death == 1 ~ year,
     TRUE ~ NA),
-    death = sum(death_year, na.rm = TRUE)) %>% 
-  filter()
-  select(coral_number, year, l, w, h, dyn_death, death_year, note)
-  
+    death = sum(death_year, na.rm = TRUE)) %>%
+  select(new_coral_number, year, l, w, h, dyn_death, death_year, note)
+
 ```
 
 
 ```{r}
-corals_long_with_recruit <- recruit_fix %>%
-  mutate(recruit_year = case_when(
-    dyn_recruitment == 1 ~ year,
-    TRUE ~ NA),
-  ) %>% 
-  group_by(coral_number) %>% 
-  mutate(recruit_year = sum(recruit_year, na.rm = TRUE)) %>% 
-  mutate(recruit_year = replace_values(recruit_year,
-    0 ~ 2013),
-  coral_id = str_c(site, habitat, transect, x, y, z, recruit_year, sep = "_"), 
-  transect_id = str_c(site, habitat, transect, sep = "_"))
+corals_long_with_coral_id <- death_correct %>% 
+  arrange(new_coral_number, year) %>% 
+  group_by(new_coral_number) %>% 
+  mutate(years_measure = ifelse(!is.na(l), year, NA)) %>% 
+  mutate(first_year = min(years_measure, na.rm = TRUE), 
+  coral_id = str_c(site, habitat, transect, x, y, z, first_year, sep = "_"), 
+  transect_id = str_c(site, habitat, transect, sep = "_")) %>%
+  select(-c(has_measurements, died_before, new_life, life_stage, years_measure, new_coral_number, first_year))
  
 
 ```
-
+# 1247 needs to be corrected
 ```{r}
+
+corals_long_with_dyn %>% 
+  arrange(coral_number, year) %>% 
+  group_by(coral_number) %>% 
+  mutate(years_measure = ifelse(!is.na(l), year, NA)) %>% 
+  mutate(first_year = min(years_measure, na.rm = TRUE))
+         
+
+
 
 ```
