@@ -204,4 +204,7 @@ corals_long_with_coral_id <- death_correct %>%
   select(-c(years_measure, new_coral_number, coral_number, first_year, life_stage))
  
 ```
+```{r}
+write_csv(corals_long_with_coral_id,  here::here("rawdata", "long_corals.csv"))
+```
 

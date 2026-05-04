@@ -7,7 +7,7 @@ authors: Kylie Newcomer, Joaquin Sandoval, Vedika Shirtekar
 
 This document handles cleaning and quality assurance of long-format coral demography data spanning 2013–2023, as well as the standardization of 2024 field sheets to align with the long-format structure. Each row represents a single coral observation in a given year, with associated size measurements (length, width, height) and demographic dynamics (recruitment, death, fusion, fission etc). The cleaning steps standardize inconsistent labels in the `Dynamics` column, split it into binary indicator columns, and address logical inconsistencies in recruitment and death events to ensure each represents a true demographic transition rather than a carried-forward status.
 
-### Load Necessary Libraries 
+### Load Necessary Libraries
 
 ```{r, message= FALSE}
 library(tidyverse)
@@ -138,11 +138,11 @@ numerous_recruits <- long_data_2013_2023_with_dynamics %>%
 
 ```
 
-### Temporary fix: some have 3 recruitment events. May need to inspect further: 
+### Temporary fix: some have 3 recruitment events. May need to inspect further:
 
-- **Recruit → death → recruit**: Same `coral_number` reused after death. These are *two different corals.* Fix: assign new IDs to the second life, or drop.
+-   **Recruit → death → recruit**: Same `coral_number` reused after death. These are *two different corals.* Fix: assign new IDs to the second life, or drop.
 
-- **Recruit → recruit (no death between)** — Likely a labeling error; the second "recruit" is just continued growth. Fix: keep first, zero the rest
+-   **Recruit → recruit (no death between)** — Likely a labeling error; the second "recruit" is just continued growth. Fix: keep first, zero the rest
 
 ```{r}
 long_data_2013_2023_with_dynamics <- long_data_2013_2023_with_dynamics %>% 
