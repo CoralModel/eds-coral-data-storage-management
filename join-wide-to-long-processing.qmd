@@ -2,24 +2,44 @@
 title: "Coral Demography Data Cleaning"
 format: html
 editor: visual
+authors: Kylie Newcomer, Joaquin Sandoval, Vedika Shirtekar
 ---
 
+This document handles cleaning and quality assurance of long-format coral demography data spanning 2013–2023, as well as the standardization of 2024 field sheets to align with the long-format structure. Each row represents a single coral observation in a given year, with associated size measurements (length, width, height) and demographic dynamics (recruitment, death, fusion, fission etc). The cleaning steps standardize inconsistent labels in the `Dynamics` column, split it into binary indicator columns, and address logical inconsistencies in recruitment and death events to ensure each represents a true demographic transition rather than a carried-forward status.
+
+### Load Necessary Libraries
+
 ```{r}
-#| warning: false
 #| message: false
 
 library(tidyverse)
 library(readxl)
 library(here)
 library(janitor)
+```
 
-# Read in observations from 2013-2023 
-wide_data_2013_2023 <- read_excel(here("rawdata", "Coral_Deomography_allyears_2013-24_V1.xlsx"), sheet = 1)
+### Import `Coral_Deomography_allyears_2013-24_V1.xlsx` and 2024 raw field sheets
 
-# Produce a character vector of the names of files or in 2024 sheets folder 
-individual_files <- list.files("rawdata/2024sheets", pattern = "*.xlsx", full.names = TRUE)
+```{r}
+#| message: false
+#| warning: false
 
-# Function to standardize raw 2024 sheets with inconsistent colulmn names/ pull observer from first row above all columns
+# Sheet 1 contains 2013–2023 only; 2024 comes from field_sheets_2024
+wide_coral_demography_2013_2023 <- read_excel(here("rawdata", "Coral_Deomography_allyears_2013-24_V1.xlsx"), sheet = 1)
+
+# Produce a character vector of the names of files in 2024 sheets folder 
+field_sheets_2024 <- list.files(here("rawdata", "2024sheets"), pattern = "\\.xlsx$", full.names = TRUE)
+
+```
+
+### Combine 2024 field sheets into a single dataframe
+
+```{r}
+#| message: false
+
+# One-time cleanup function for raw 2024 sheets with inconsistent column names.
+# Pulls observer name from the last non-NA cell of row 1 (layout varies across sheets).
+# Future sheets will be standardized and won't need this.
 read_file <- function(f) {
   meta <- read_excel(f, col_names = FALSE, n_max = 1)
   obs <- tail(na.omit(as.character(meta[1, ])), 1)
@@ -28,108 +48,138 @@ read_file <- function(f) {
 }
 
 # Combine into one dataframe
-corals_2024 <- bind_rows(lapply(individual_files, read_file)) %>%
-  # Deselect columns with previous year measurements
-  select(-c("W", "H", "L", "Status"))  %>%
+coral_demography_2024 <- bind_rows(lapply(field_sheets_2024, read_file)) %>%
+  # Drop columns with previous year measurements
+  select(-c("W", "H", "L", "Status")) %>%
   # Correct naming convention
   rename(habitat = Hab,
-    transect = Tran) %>%
-    # Standardize column naming structure across sheets
+         transect = Tran) %>%
+  # Standardize column naming structure across sheets
   mutate(L2024 = coalesce(L2024, L24),
          W2024 = coalesce(W2024, W24),
          H2024 = coalesce(H2024, H24),
-           # Standardize dynamics column across sheets
+         # Standardize dynamics column across sheets
          Dynamics_2024 = coalesce(Dynam, Dynamic, Dyn, Dynamics),
-         across(c(X, Y, Z), as.numeric)
-  ) %>%
+         across(c(X, Y, Z), as.numeric)) %>%
   select(-any_of(c("L24", "W24", "H24",
                    "Dynam", "Dynamic", "Dyn", "Dynamics", "...17",
-                   "status", "source_file"))) %>% 
+                   "status", "source_file"))) %>%
   clean_names()
 ```
 
-```{r}
-wide_data_no_2024 <- wide_data_2013_2023 %>%
-  select(!contains("24")) # Remove 2024 columns because they have no data
+### Remove empty 2024 columns from `wide_coral_demography_2013_2023` and full join with 2024 observations `coral_demography_2024`
 
-all_corals <- full_join(wide_data_no_2024, corals_2024, 
+```{r}
+wide_coral_demography_2013_2023 <- wide_coral_demography_2013_2023 %>%
+  select(!contains("24")) %>% # Remove 2024 columns because they have no data
+  clean_names()
+
+wide_coral_demography_2013_2024 <- full_join(wide_coral_demography_2013_2023, coral_demography_2024, 
                         by = c("site", "habitat", "transect", "taxa", "x", "y", "z")) %>% 
   # Remove any "filler" or empty rows
-  filter(!is.na(site)) %>% 
-  clean_names()
+  filter(!is.na(site))
 ```
 
-```{r}
-# Create new coral numbers for 2024 recruits
-new_coral_numbers <- all_corals %>% 
-  arrange(coral_number) %>% 
-  mutate(coral_number = if_else(is.na(coral_number), 
-                                 row_number(), # assign all new recruits a coral number
-                                 coral_number))
+### Creating new coral number for 2024 recruits
 
-# Check that each row got a unqiue coral number
-length(unique(new_coral_numbers$coral_number))
+```{r}
+# Assign new coral numbers to 2024 recruits (rows with NA), starting from max + 1
+wide_coral_demography_2013_2024 <- wide_coral_demography_2013_2024 %>%
+  mutate(coral_number = if_else(
+    is.na(coral_number),
+    max(coral_number, na.rm = TRUE) + cumsum(is.na(coral_number)),
+    coral_number
+  ))
+
+# Verify all coral numbers are unique
+stopifnot(length(unique(wide_coral_demography_2013_2024$coral_number)) ==
+          nrow(wide_coral_demography_2013_2024))
 ```
 
+### Pivot complete dataset longer
+
+Each row represents a single coral observation in a given year.
+
 ```{r}
-# Pivot data to long by years
-corals_long <- new_coral_numbers %>%
+# Pivot year-suffix columns to long format (one row per coral-year)
+long_coral_demography_2013_2024 <- wide_coral_demography_2013_2024 %>%
   pivot_longer(cols = -c(1:8), names_to = c(".value", "year"), names_pattern = "(.*)(\\d{4}$)") %>% 
   filter(!is.na(year))
 ```
 
+### Expand and standardize dynamics column
+
 ```{r}
-# Create dynamics columns
-corals_long_with_dyn <- corals_long %>%
-  # Separate cells with multiple dynamics into multiple rows
+#| warning: false
+
+# Separate cells with multiple dynamics into multiple rows, then pivot wide
+long_coral_demography_2013_2024_dynamics <- long_coral_demography_2013_2024 %>%
   separate_longer_delim(dynamics_, delim = regex("\\s*,\\s*")) %>% # regex for inconsistencies in spacing
   mutate(present = case_when(
     is.na(dynamics_) ~ 0, # If dynamics column is NA, present = 0
     TRUE ~ 1),
-    # Standardizing the dynamics_ labels
+    # Standardize the dynamics_ labels
     dynamics_ = case_when(
-                str_detect(dynamics_, "Fus") ~ "Fusion",
-                str_detect(dynamics_, "Fis") ~ "Fission",
-                TRUE ~ dynamics_
-    ),
-    # Make measurement and year columns numeric (force NA's)
-    across(c(year, l, w, h), as.numeric),
-    
-    # Correct corals that were identified as being on the wrong transect
-    transect = case_when(coral_number %in% c(1347: 1353) ~ "T01",
-                          coral_number %in% c(1361: 1363) ~ "T01", 
-                          coral_number %in% c(1366: 1376) ~ "T01", 
-                          coral_number %in% c(1466: 1483) ~ "T01",
-                          coral_number == 1863 ~ "T04",
-                          coral_number == 1872 ~ "T04", 
-                          TRUE ~ transect),
-    dynamics_ = replace_values(dynamics_,
-                               "Dead" ~ "Death")) %>% 
-  # Further pivot to make dynamics columns
-  pivot_wider(names_from = dynamics_, values_from = present, names_prefix = "dyn_", values_fill = 0) %>% 
-  clean_names() %>%
-  select(coral_number, year, site, habitat, transect, taxa, x, y, z, l, w, h, obs, note, growth_ratio, dyn_recruitment, dyn_growth, dyn_shrinkage, dyn_death, dyn_immigration, dyn_emigration, dyn_fusion, dyn_fission, dyn_edge)
-
+      str_detect(dynamics_, "Fus") ~ "Fusion",
+      str_detect(dynamics_, "Fis") ~ "Fission",
+      dynamics_ == "Dead"          ~ "Death",
+      TRUE ~ dynamics_
+    )) %>%
+  pivot_wider(names_from = dynamics_, values_from = present, names_prefix = "dyn_", values_fill = 0) %>%
+  clean_names()
 ```
 
+### Correct transect assignments for misidentified corals
+
 ```{r}
-# Test how many corals had multiple recruitment
-recruit_check <- corals_long_with_dyn %>%
+long_coral_demography_2013_2024_dynamics <- long_coral_demography_2013_2024_dynamics %>%
+  mutate(transect = case_when(coral_number %in% c(1347: 1353) ~ "T01",
+                              coral_number %in% c(1361: 1363) ~ "T01",
+                              coral_number %in% c(1366: 1376) ~ "T01",
+                              coral_number %in% c(1466: 1483) ~ "T01",
+                              coral_number == 1863 ~ "T04",
+                              coral_number == 1872 ~ "T04",
+                              TRUE ~ transect))
+```
+
+### Coerce measurement columns to numeric and select final columns
+
+```{r}
+#| warning: false
+
+long_coral_demography_2013_2024_dynamics <- long_coral_demography_2013_2024_dynamics %>%
+  mutate(across(c(year, l, w, h), as.numeric)) %>%
+  select(coral_number, year, site, habitat, transect, taxa, x, y, z, l, w, h, obs, note, growth_ratio,
+         dyn_recruitment, dyn_growth, dyn_shrinkage, dyn_death, dyn_immigration, dyn_emigration, dyn_fusion,
+         dyn_fission, dyn_edge)
+```
+
+### Quality Assurance for dynamic columns 
+
+```{r}
+# A coral should only be recruited once — flag any with >1 recruitment event
+recruit_check <- long_coral_demography_2013_2024_dynamics %>%
   group_by(coral_number) %>%
   summarize(recruit_occurrences = sum(dyn_recruitment)) %>%
   filter(recruit_occurrences > 1)
 
-nrow(recruit_check)
+if (nrow(recruit_check) > 0) {
+  warning(nrow(recruit_check), " corals have multiple recruitment events — see recruit_check")
+}
 ```
 
+### Remove duplicate recruitment events
 
 ```{r}
-recruit_fix <- corals_long_with_dyn %>% 
-  arrange(coral_number, year) %>% 
-  group_by(coral_number) %>% 
-  # Remove any duplicate recruitment for same coral
-  mutate(dyn_recruitment = if_else(cumsum(dyn_recruitment) > 1, 0, dyn_recruitment))
+recruit_fix <- long_coral_demography_2013_2024_dynamics %>%
+  arrange(coral_number, year) %>%
+  group_by(coral_number) %>%
+  # Keep only the first recruitment event per coral
+  mutate(dyn_recruitment = if_else(cumsum(dyn_recruitment) > 1, 0, dyn_recruitment)) %>%
+  ungroup()
 ```
+
+### Verify duplicate recruitments are resolved
 
 ```{r}
 recruit_fix_check <- recruit_fix %>%
@@ -137,74 +187,106 @@ recruit_fix_check <- recruit_fix %>%
   summarize(recruit_occurrences = sum(dyn_recruitment)) %>%
   filter(recruit_occurrences > 1)
 
-nrow(recruit_fix_check)
+if (nrow(recruit_fix_check) == 0) {
+  message("All corals now have at most one recruitment event.")
+} else {
+  warning(nrow(recruit_fix_check), " corals still have multiple recruitment events.")
+}
 ```
 
+### Quality assurance for death events
 
 ```{r}
+# A coral should only die once — flag any with >1 death event
 death_check <- recruit_fix %>%
-  group_by(coral_number) %>% 
-  summarize(total_death = sum(dyn_death)) %>% 
+  group_by(coral_number) %>%
+  summarize(total_death = sum(dyn_death)) %>%
   filter(total_death > 1)
 
-nrow(death_check)
+if (nrow(death_check) == 0) {
+  message("All corals have at most one death event.")
+} else {
+  warning(nrow(death_check), " corals have multiple death events — see multi_death_histories")
+}
 ```
 
+### Inspect histories of corals with multiple death events
+
 ```{r}
+# Pull full year-by-year history for flagged corals to review manually
 multi_death_histories <- recruit_fix %>%
   filter(coral_number %in% death_check$coral_number) %>%
   arrange(coral_number, year) %>%
   select(coral_number, year, l, w, h, dyn_recruitment, dyn_death)
 ```
 
+### Remove duplicate death events
+
+-- NEED tp describe why we chose within 2 years
 
 ```{r}
-death_correct <- recruit_fix %>%
+death_fix <- recruit_fix %>%
   arrange(coral_number, year) %>%
   group_by(coral_number) %>%
   # Correct any corals that "died" but continued to have measurements within 2 years
-  mutate(dyn_death = ifelse(dyn_death == 1 & lead(!is.na(l), n = 2) & year < 2022, 0, dyn_death)) %>% 
+  mutate(dyn_death = ifelse(dyn_death == 1 & lead(!is.na(l), n = 2) & year < 2022, 0, dyn_death)) %>%
   mutate(
     # Create binary is measurements are recorded
-    has_measurements = !is.na(suppressWarnings(l)),
+   has_measurements = !is.na(l),
     # Track whether coral has died at any point before
-    died_before = lag(cumsum(dyn_death) >= 1, default = FALSE),
+    died_before = lag(cumsum(dyn_death), default = 0) >= 1,
     # New life detected: measurements present AFTER a previous death
     new_life = has_measurements & died_before,
     # Reset the "dead" status when a new life starts
     life_stage = cumsum(new_life) + 1,
     # Create a new coral number for new corals
     new_coral_number = case_when(
-      # Any coral that has died but reappeared is denoted by coral number
-      life_stage > 1 ~ paste0(coral_number, "_n"),
+      # Append life stage so each reincarnation gets a unique ID
+      life_stage > 1 ~ paste0(coral_number, "_", life_stage),
       TRUE ~ as.character(coral_number)
     )
   ) %>%
   # Group by NEW coral number
   group_by(new_coral_number) %>%
   # Within each life, keep only the first death
-  mutate(dyn_death = if_else(cumsum(dyn_death) > 1, 0, dyn_death)) %>% 
+  mutate(dyn_death = if_else(cumsum(dyn_death) > 1, 0, dyn_death)) %>%
   ungroup() %>%
   select(-c(has_measurements, died_before, new_life))
-
 ```
 
+### Verify duplicate deaths are resolved
 
 ```{r}
-corals_long_with_coral_id <- death_correct %>% 
-  arrange(new_coral_number, year) %>% 
-  group_by(new_coral_number) %>% 
-  # New variable signifying when a coral has measurements
-  mutate(years_measure = ifelse(!is.na(l), year, NA)) %>% 
-  # Select the first year of measurements
-  mutate(first_year = min(years_measure, na.rm = TRUE), 
-         # Create new coral_id based on location, taxa, and first occurance
-  coral_id = str_c(site, habitat, transect, taxa, x, y, z, first_year, sep = "_"), 
-  transect_id = str_c(site, habitat, transect, sep = "_")) %>%
-  select(-c(years_measure, new_coral_number, coral_number, first_year, life_stage))
- 
+death_fix_check <- death_fix %>%
+  group_by(coral_number) %>%
+  summarize(total_death = sum(dyn_death)) %>%
+  filter(total_death > 1)
+
+if (nrow(death_fix_check) == 0) {
+  message("All corals have at most one death event.")
+} else {
+  warning(nrow(death_fix_check), " corals have multiple death events – see multi_death_histories")
+}
 ```
+
+###  Assign coral_id and transect_id
+
+```{r}
+### Assign coral_id and transect_id
+corals_long_with_coral_id <- death_fix %>%
+arrange(new_coral_number, year) %>% 
+          group_by(new_coral_number) %>%
+# New variable signifying when a coral has measurements
+mutate(years_measure = ifelse(!is.na(l), year, NA)) %>%
+# Select the first year of measurements
+mutate(first_year = min(years_measure, na.rm = TRUE),
+# Create new coral_id based on location, taxa, and first occurance
+coral_id = str_c(site, habitat, transect, taxa, x, y, z, first_year, sep = "-"),
+transect_id = str_c(site, habitat, transect, sep = "_")) %>%
+select(-c(years_measure, new_coral_number, coral_number, first_year, life_stage))
+
+```
+
 ```{r}
 write_csv(corals_long_with_coral_id,  here::here("rawdata", "long_corals.csv"))
 ```
-
