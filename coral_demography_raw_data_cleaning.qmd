@@ -102,12 +102,13 @@ stopifnot(length(unique(wide_coral_demography_2013_2024$coral_number)) ==
 
 ### Pivot complete dataset longer
 
-Each row represents a single coral observation in a given year.
+Each row represents a single coral observation in a given year. We found several instances of coral numbers with no measurement data.
 
 ```{r}
 # Pivot year-suffix columns to long format (one row per coral-year)
 long_coral_demography_2013_2024 <- wide_coral_demography_2013_2024 %>%
   pivot_longer(cols = -c(1:8), names_to = c(".value", "year"), names_pattern = "(.*)(\\d{4}$)") %>% 
+  # To filter out empty rows from 2024 sheets 
   filter(!is.na(year))
 ```
 
@@ -157,6 +158,14 @@ long_coral_demography_2013_2024_dynamics <- long_coral_demography_2013_2024_dyna
          dyn_recruitment, dyn_growth, dyn_shrinkage, dyn_death, dyn_immigration, dyn_emigration, dyn_fusion,
          dyn_fission, dyn_edge)
 ```
+
+```{r}
+long_coral_demography_2013_2024_dynamics <- long_coral_demography_2013_2024_dynamics %>% 
+  group_by(coral_number) %>% 
+  mutate(total_length = sum(l, na.rm = TRUE)) %>% 
+  filter(total_length > 0)
+```
+
 
 ### Quality Assurance for dynamic columns
 
@@ -226,13 +235,13 @@ multi_death_histories <- recruit_fix %>%
 
 ### Remove duplicate death events
 
--- NEED tp describe why we chose within 2 years
+-- show instances of corals having measurements, dying and then at most 2 years later, having measurements again
 
 ```{r}
 death_fix <- recruit_fix %>%
   arrange(coral_number, year) %>%
   group_by(coral_number) %>%
-  # Correct any corals that "died" but continued to have measurements within 2 years
+  # Correct any corals that "died" but continued to have measurements within 2 years because this was longest gap of missing data between 1st and measurements appearing 
   mutate(dyn_death = ifelse(dyn_death == 1 & lead(!is.na(l), n = 2) & year < 2022, 0, dyn_death)) %>%
   mutate(
     # Create binary is measurements are recorded
@@ -262,7 +271,7 @@ death_fix <- recruit_fix %>%
 
 ```{r}
 death_fix_check <- death_fix %>%
-  group_by(coral_number) %>%
+  group_by(new_coral_number) %>%
   summarize(total_death = sum(dyn_death)) %>%
   filter(total_death > 1)
 
@@ -287,7 +296,8 @@ mutate(first_year = min(years_measure, na.rm = TRUE),
 # Create new coral_id based on location, taxa, and first occurance
 coral_id = str_c(site, habitat, transect, taxa, x, y, z, first_year, sep = "-"),
 transect_id = str_c(site, habitat, transect, sep = "_")) %>%
-select(-c(years_measure, new_coral_number, coral_number, first_year, life_stage))
+select(-c(years_measure, new_coral_number, coral_number, first_year, life_stage)) %>% 
+  ungroup()
 
 ```
 
@@ -316,7 +326,6 @@ plots <- corals_long_with_coral_id %>% filter(str_detect(transect, "^P"))
 p_oob <- plots %>% filter(x < 0 | x > 10) %>% distinct(new_coral_number)
 cat("Plots - corals with out of bounds x:", nrow(p_oob), "\n")
 ```
-
 ## Fix x values out of bounds
 
 ```{r}
@@ -392,5 +401,5 @@ df_large_measurements <- corals_long_with_coral_id %>%
 ### Write csv to 'analysisdata' folder -- maybe should be a separate folder
 
 ```{r}
-write_csv(corals_long_with_coral_id,  here::here("projectdata", "coral_demography_2013_2024_long.csv"))
+ write_csv(corals_long_with_coral_id,  here::here("projectdata", "coral_demography_2013_2024_long.csv"))
 ```
