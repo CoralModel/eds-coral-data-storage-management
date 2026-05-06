@@ -1,42 +1,34 @@
 ---
-title: "Coral Demography Volume Cleaning Script "
+title: "Coral Demography Analysis Cleaning Script "
 author: Kylie Newcomer, Joaquin Sandoval, Vedika Shirtekar 
 date: 4/19/2026
 format: html
 editor: visual
 ---
 
-This script further cleans, standardizes, and prepares `updated_coral_tidy_2013-2024.csv` for downstream GLMM analysis, profile figures, and transect-level spatiotemporal visualizations. The input file was obtained after initial raw data processing by Dr. Hunter Lenihand and Ryan Anderson.
+This script further cleans, standardizes, and prepares `coral_demography_2013_2024_long.csv` for downstream GLMM analysis, profile figures, and transect-level spatiotemporal visualizations. The input file is read from the `coral_demography_raw_data_cleaning.qmd` .
 
 **Data Cleaning**
 
--   Standardizes missing and ambiguous character values (`MD`, `UK`, `MK`, `?`, `MissingObs`, `Na`, `NA`, `Missing Data MD (Not sampled in 2017)`) to R `NA`
+- Standardizes missing and ambiguous character values (`MD`, `UK`, `MK`, `?`, `MissingObs`, `Na`, `NA`, `Missing Data MD (Not sampled in 2017)`) to R `NA`
 
--   Converts measurement columns to numeric after character removal
+- Converts measurement columns to numeric after character removal
 
--   Filters to transect data only, excluding backreef plots
+- Filters to transect data only, excluding backreef plots
 
--   Converts `y` and `z` dimensions from meters to centimeters for downstream visualizations
+- Converts `y` and `z` dimensions from meters to centimeters for downstream visualizations
 
 **Variable Construction**
 
--   Reassigns updated transect versions to a unified transect column
+- Creates a bleaching period indicator: `0` = prior (2013–2018), `1` = post (2019–2024)
 
--   Creates a unique transect ID
+- Sources volume formulas from the `R/` folder to calculate colony volume by taxa: cylinder (*Acropora*), hemisphere *Porites*), sphere (*Pocillopora*)
 
--   Creates a bleaching period indicator: `0` = prior (2013–2018), `1` = post (2019–2024)
-
--   Sources volume formulas from the `R/` folder to calculate colony volume by taxa: cylinder (*Acropora*), hemisphere *Porites*), sphere (*Pocillopora*)
-
--   Creates lagged size variables: `size_t_minus1` (previous year), `size_t0` (current year), `size_t1` (following year)
+- Creates lagged size variables: `size_t_minus1` (previous year), `size_t0` (current year), `size_t1` (following year)
 
 **Coral Identity Validation**
 
--   Checks for duplicate `coral_id` usage across distinct individuals — if a coral dies and a new recruit settles at the same coordinates, the same `coral_id` may reappear after a gap
-
--   Appends the first observed year to `coral_id` (`site_habitat_transect_x_y_z_firstyear`) to uniquely identify individuals
-
--   If a coral with the same `coral_id` decreases in size by \>95% between consecutive years, it is split into two separate coral numbers, as this likely represents a new individual
+- If a coral with the same `coral_id` decreases in size by \>95% between consecutive years, it is split into two separate coral numbers, as this likely represents a new individual
 
 ```{r}
 #| message : false
@@ -53,7 +45,7 @@ coral_colors <- c(
 
 ```{r}
 # Read in data, converting missing codes to NA
-clean_coral <- read_csv(here::here("rawdata", "long_corals.csv")) %>%
+clean_coral <- read_csv(here::here("rawdata", "coral_demography_2013_2024_long.csv")) %>%
   # Remove backreef plots, keep only transect surveys
   filter(str_detect(transect, "T")) %>%
  mutate(
@@ -156,8 +148,7 @@ resets <- volume_coral |>
 ```
 
 ```{r}
-write_csv(clean_coral,  here::here("analysisdata", "clean_corals.csv"))
-write_csv(volume_coral, here::here("analysisdata", "volume_corals.csv"))
+write_csv(volume_coral, here::here("analysisdata", "coral_demography_analysis_data.csv"))
 ```
 
 ```{r}

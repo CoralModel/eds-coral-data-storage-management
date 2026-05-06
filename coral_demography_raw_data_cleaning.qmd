@@ -1,5 +1,5 @@
 ---
-title: "Coral Demography Data Cleaning"
+title: "Coral Demography Raw Data Cleaning"
 format: html
 editor: visual
 authors: Kylie Newcomer, Joaquin Sandoval, Vedika Shirtekar
@@ -64,7 +64,11 @@ coral_demography_2024 <- bind_rows(lapply(field_sheets_2024, read_file)) %>%
   select(-any_of(c("L24", "W24", "H24",
                    "Dynam", "Dynamic", "Dyn", "Dynamics", "...17",
                    "status", "source_file"))) %>%
+  #"A" was used for Acropora in 2024; standardize to "Acr"
+  mutate(Taxa   = if_else(Taxa == "A", "Acr", Taxa)) %>% 
   clean_names()
+
+cat("Unique taxa:", sort(unique(na.omit(coral_demography_2024$taxa))))
 ```
 
 ### Remove empty 2024 columns from `wide_coral_demography_2013_2023` and full join with 2024 observations `coral_demography_2024`
@@ -154,7 +158,7 @@ long_coral_demography_2013_2024_dynamics <- long_coral_demography_2013_2024_dyna
          dyn_fission, dyn_edge)
 ```
 
-### Quality Assurance for dynamic columns 
+### Quality Assurance for dynamic columns
 
 ```{r}
 # A coral should only be recruited once — flag any with >1 recruitment event
@@ -269,7 +273,7 @@ if (nrow(death_fix_check) == 0) {
 }
 ```
 
-###  Assign coral_id and transect_id
+### Assign coral_id and transect_id
 
 ```{r}
 ### Assign coral_id and transect_id
@@ -287,6 +291,96 @@ select(-c(years_measure, new_coral_number, coral_number, first_year, life_stage)
 
 ```
 
+### Quality assurance for coral positions 
+Verify all transect positions are within transect boundaries
+
+x dimension: moving forward on the transect - meters 
+y dimension: left & right from x vector - centimeters 
+z dimension: vertical position from benthos - centimeters 
+
+Transects: One 5x1m transect on top of each of four 5x5m plot
+
+**Sample Poc & Por in first 1m2 only, sample Acr, Mil & Por>25cm in entire 5m2**		
+
+Plots: Ten 10x1m transects running through 10x10m plot
+
+**Sample all Acr, Mil & Por>25cm in entire 100m2 and Poc in first 25m2 only** 			
+
 ```{r}
-write_csv(corals_long_with_coral_id,  here::here("rawdata", "long_corals.csv"))
+# Transect QA - positions out of bounds
+transects <- corals_long_with_coral_id %>% filter(str_detect(transect, "^T"))
+t_oob <- transects %>% filter(x < 0 | x > 5) %>% distinct(new_coral_number)
+cat("Transects - corals with out of bounds x:", nrow(t_oob), "\n")
+
+# Plot QA - positions out of bounds
+plots <- corals_long_with_coral_id %>% filter(str_detect(transect, "^P"))
+p_oob <- plots %>% filter(x < 0 | x > 10) %>% distinct(new_coral_number)
+cat("Plots - corals with out of bounds x:", nrow(p_oob), "\n")
+```
+## Fix x values out of bounds 
+```{r}
+# Check all out-of-bounds x values before fixing
+corals_long_with_coral_id %>% 
+  filter((str_detect(transect, "^T") & x > 5) | 
+         (str_detect(transect, "^P") & x > 10)) %>% 
+  select(new_coral_number, transect, taxa, x) %>% 
+  distinct()
+```
+```{r}
+# Clear factor-of-10 errors (x >> boundary)
+corals_long_with_coral_id <- corals_long_with_coral_id %>%
+  mutate(x = if_else(str_detect(transect, "^T") & x > 10, x / 10, x),
+         x = if_else(str_detect(transect, "^P") & x > 20, x / 10, x))
+
+# Transect QA - positions out of bounds
+transects <- corals_long_with_coral_id %>% filter(str_detect(transect, "^T"))
+t_oob <- transects %>% filter(x < 0 | x > 5) %>% distinct(new_coral_number)
+cat("Transects - corals with out of bounds x:", nrow(t_oob), "\n")
+
+# Plot QA - positions out of bounds
+plots <- corals_long_with_coral_id %>% filter(str_detect(transect, "^P"))
+p_oob <- plots %>% filter(x < 0 | x > 10) %>% distinct(new_coral_number)
+cat("Plots - corals with out of bounds x:", nrow(p_oob), "\n")
+```
+
+```{r}
+# Borderline cases - flag for manual review
+corals_long_with_coral_id %>%
+  filter((str_detect(transect, "^T") & x > 5) |
+         (str_detect(transect, "^P") & x > 10)) %>%
+  select(new_coral_number, transect, taxa, x, y, z) %>%
+  distinct()
+```
+## Need to check. Not big deal but plots will just drop these coral downstream
+
+## Fix x values out of bounds 
+
+```{r}
+# Check all out-of-bounds x values before fixing
+corals_long_with_coral_id %>% 
+  filter((str_detect(transect, "^T") & y > 100) | 
+         (str_detect(transect, "^P") & y > 100)) %>% 
+  select(new_coral_number, transect, taxa, y) %>% 
+  distinct()
+```
+## This is only one instance -> covert to 100?
+
+### Quality assurance for coral measurements 
+ Verify all measurements are reasonable. Largest corals should be Porites in the backreef plot.
+ 
+```{r}
+corals_long_with_coral_id %>%
+  group_by(taxa) %>%
+  summarise(across(c(l, w, h), list(min = ~min(., na.rm = TRUE), 
+                                     max = ~max(., na.rm = TRUE))))
+```
+These are definitely data entries. .1 of a centimeter? Not plausible. 8 meter high porites is ridculous. Need to make filter thresholds and correct those measurements. 
+ 
+```{r}
+df_large_measurements <- corals_long_with_coral_id %>%
+  filter(l > 500 | w > 500 | h > 500)
+```
+
+```{r}
+write_csv(corals_long_with_coral_id,  here::here("rawdata", "coral_demography_2013_2024_long.csv"))
 ```
