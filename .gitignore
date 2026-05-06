@@ -1,4 +1,7 @@
 rawdata/
+projectdata/
+analysisdata/
+
 # History files
 .Rhistory
 .Rapp.history
