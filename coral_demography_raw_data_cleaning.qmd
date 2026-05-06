@@ -291,20 +291,19 @@ select(-c(years_measure, new_coral_number, coral_number, first_year, life_stage)
 
 ```
 
-### Quality assurance for coral positions 
+### Quality assurance for coral positions
+
 Verify all transect positions are within transect boundaries
 
-x dimension: moving forward on the transect - meters 
-y dimension: left & right from x vector - centimeters 
-z dimension: vertical position from benthos - centimeters 
+x dimension: moving forward on the transect - meters y dimension: left & right from x vector - centimeters z dimension: vertical position from benthos - centimeters
 
 Transects: One 5x1m transect on top of each of four 5x5m plot
 
-**Sample Poc & Por in first 1m2 only, sample Acr, Mil & Por>25cm in entire 5m2**		
+**Sample Poc & Por in first 1m2 only, sample Acr, Mil & Por\>25cm in entire 5m2**
 
 Plots: Ten 10x1m transects running through 10x10m plot
 
-**Sample all Acr, Mil & Por>25cm in entire 100m2 and Poc in first 25m2 only** 			
+**Sample all Acr, Mil & Por\>25cm in entire 100m2 and Poc in first 25m2 only**
 
 ```{r}
 # Transect QA - positions out of bounds
@@ -317,7 +316,9 @@ plots <- corals_long_with_coral_id %>% filter(str_detect(transect, "^P"))
 p_oob <- plots %>% filter(x < 0 | x > 10) %>% distinct(new_coral_number)
 cat("Plots - corals with out of bounds x:", nrow(p_oob), "\n")
 ```
-## Fix x values out of bounds 
+
+## Fix x values out of bounds
+
 ```{r}
 # Check all out-of-bounds x values before fixing
 corals_long_with_coral_id %>% 
@@ -326,6 +327,7 @@ corals_long_with_coral_id %>%
   select(new_coral_number, transect, taxa, x) %>% 
   distinct()
 ```
+
 ```{r}
 # Clear factor-of-10 errors (x >> boundary)
 corals_long_with_coral_id <- corals_long_with_coral_id %>%
@@ -351,9 +353,10 @@ corals_long_with_coral_id %>%
   select(new_coral_number, transect, taxa, x, y, z) %>%
   distinct()
 ```
+
 ## Need to check. Not big deal but plots will just drop these coral downstream
 
-## Fix x values out of bounds 
+## Fix x values out of bounds
 
 ```{r}
 # Check all out-of-bounds x values before fixing
@@ -363,11 +366,13 @@ corals_long_with_coral_id %>%
   select(new_coral_number, transect, taxa, y) %>% 
   distinct()
 ```
-## This is only one instance -> covert to 100?
 
-### Quality assurance for coral measurements 
- Verify all measurements are reasonable. Largest corals should be Porites in the backreef plot.
- 
+## This is only one instance -\> covert to 100?
+
+### Quality assurance for coral measurements
+
+Verify all measurements are reasonable. Largest corals should be Porites in the backreef plot.
+
 ```{r}
 # Range of each measurement for each taxa/habitat combination 
 corals_long_with_coral_id %>%
@@ -376,14 +381,15 @@ corals_long_with_coral_id %>%
                                      max = ~max(., na.rm = TRUE))), 
             .groups = "drop_last")    # Silences message 
 ```
-These are definitely data entries errors. .1 of a centimeter? Not plausible. 8 meter high porites is ridiculous. Need to make filter thresholds and correct those measurements. 
- 
+
+These are definitely data entries errors. .1 of a centimeter? Not plausible. 8 meter high porites is ridiculous. Need to make filter thresholds and correct those measurements.
+
 ```{r}
 df_large_measurements <- corals_long_with_coral_id %>%
   filter(l > 500 | w > 500 | h > 500)
 ```
 
-### Write csv to 'analysisdata' folder -- maybe should be a separate folder 
+### Write csv to 'analysisdata' folder -- maybe should be a separate folder
 
 ```{r}
 write_csv(corals_long_with_coral_id,  here::here("projectdata", "coral_demography_2013_2024_long.csv"))
