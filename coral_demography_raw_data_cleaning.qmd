@@ -369,18 +369,22 @@ corals_long_with_coral_id %>%
  Verify all measurements are reasonable. Largest corals should be Porites in the backreef plot.
  
 ```{r}
+# Range of each measurement for each taxa/habitat combination 
 corals_long_with_coral_id %>%
-  group_by(taxa) %>%
+  group_by(taxa, habitat) %>%
   summarise(across(c(l, w, h), list(min = ~min(., na.rm = TRUE), 
-                                     max = ~max(., na.rm = TRUE))))
+                                     max = ~max(., na.rm = TRUE))), 
+            .groups = "drop_last")    # Silences message 
 ```
-These are definitely data entries. .1 of a centimeter? Not plausible. 8 meter high porites is ridculous. Need to make filter thresholds and correct those measurements. 
+These are definitely data entries errors. .1 of a centimeter? Not plausible. 8 meter high porites is ridiculous. Need to make filter thresholds and correct those measurements. 
  
 ```{r}
 df_large_measurements <- corals_long_with_coral_id %>%
   filter(l > 500 | w > 500 | h > 500)
 ```
 
+### Write csv to 'analysisdata' folder -- maybe should be a separate folder 
+
 ```{r}
-write_csv(corals_long_with_coral_id,  here::here("rawdata", "coral_demography_2013_2024_long.csv"))
+write_csv(corals_long_with_coral_id,  here::here("projectdata", "coral_demography_2013_2024_long.csv"))
 ```
