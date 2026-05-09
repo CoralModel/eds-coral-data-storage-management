@@ -6,15 +6,13 @@ format: html
 editor: visual
 ---
 
-This script further cleans, standardizes, and prepares `coral_demography_2013_2024_long.csv` for downstream GLMM analysis, profile figures, and transect-level spatiotemporal visualizations. The input file is read from the `coral_demography_raw_data_cleaning.qmd` .
+This script prepares `coral_demography_2013_2024_long.csv` for downstream GLMM analysis, profile figures, and transect-level spatiotemporal visualizations. The input file is read from the output of the `coral_demography_raw_data_cleaning.qmd` : `coral_demography_2013_2024_long.csv`.
 
 **Data Cleaning**
 
-- Standardizes missing and ambiguous character values (`MD`, `UK`, `MK`, `?`, `MissingObs`, `Na`, `NA`, `Missing Data MD (Not sampled in 2017)`) to R `NA`
-
-- Converts measurement columns to numeric after character removal
-
 - Filters to transect data only, excluding backreef plots
+
+- Filters for only recruitment and death dynamic columns
 
 - Converts `y` and `z` dimensions from meters to centimeters for downstream visualizations
 
@@ -26,61 +24,19 @@ This script further cleans, standardizes, and prepares `coral_demography_2013_20
 
 - Creates lagged size variables: `size_t_minus1` (previous year), `size_t0` (current year), `size_t1` (following year)
 
-**Coral Identity Validation**
-
-- If a coral with the same `coral_id` decreases in size by \>95% between consecutive years, it is split into two separate coral numbers, as this likely represents a new individual
+### Load Necessary Libraries
 
 ```{r}
-#| message : false
-
+#| message: false
 library(tidyverse)
-
-coral_colors <- c(
- Acr = "blue", 
- Poc = "red", 
- Por = "darkgreen", 
- Mil = "darkorange"
-)
+library(here)
 ```
 
-```{r}
-# Read in data, converting missing codes to NA
-clean_coral <- read_csv(here::here("rawdata", "coral_demography_2013_2024_long.csv")) %>%
-  # Remove backreef plots, keep only transect surveys
-  filter(str_detect(transect, "T")) %>%
- mutate(
-    height = as.numeric(h),
-    width  = as.numeric(w),
-    length = as.numeric(l),
-    # Fix data entry error: height 800 should be 80 for this porites in 2020
-    height = if_else(coral_id == "LTER4_BR_T04_Por_5_30_40" & year == 2020, 80, height),
-    y_m    = y / 100,
-    z_m    = z / 100,
-    # "A" was used for Acropora in 2024; standardize to "Acr"
-    taxa   = if_else(taxa == "A", "Acr", taxa),
-    # Assign old transects
-    transect = case_when(
-           str_detect(transect, "1") ~ "T1",
-           str_detect(transect, "2") ~ "T2",
-           str_detect(transect, "3") ~ "T3",
-           str_detect(transect, "4") ~ "T4",
-         ),
-    # Create bleaching period variable
-    period = case_when(
-    year < 2019 ~ 0,
-    TRUE ~ 1
-  ),
-  )
-```
+### Read in `coral_demography_2013_2024_long.csv`
 
 ```{r}
-## Finding giant porites 
-
-# clean_coral %>% 
-#   filter(taxa == "Por") %>% 
-#   arrange(desc(volume)) %>% 
-#   select(coral_id, year, length, width, height, volume) %>% 
-#   head()
+#| message: false
+coral_demography_2013_2024_long <- read_csv(here("projectdata", "coral_demography_2013_2024_long.csv"))
 ```
 
 # Source volume functions
@@ -98,11 +54,11 @@ source(here::here("R", "cyl_vol.R"))
 Removed rowwise() and the 3-way filter/rbind — replaced with a single case_when in mutate Dropped size_t0 = volume (redundant) Added ungroup() after the lagged size calculation Switched case_when to if_else for the single taxa recode here::here() on both write_csv calls Collapsed the initial cleaning into one piped chain
 
 ```{r}
-volume_coral <- clean_coral %>%
+coral_demography_2013_2024_analysis <- coral_demography_2013_2024_long %>%
   mutate(size_t0 = case_when(
-    taxa == "Poc" ~ sph_vol(length, width, height),
-    taxa == "Por" ~ hemisph_vol(length, width, height),
-    TRUE          ~ cyl_vol(length, width, height)
+    taxa == "Poc" ~ sph_vol(l, w, h),
+    taxa == "Por" ~ hemisph_vol(l, w, h),
+    TRUE          ~ cyl_vol(l, w, h)
   )) %>%
   arrange(coral_id, year) %>%
   group_by(coral_id) %>%
@@ -110,66 +66,11 @@ volume_coral <- clean_coral %>%
     size_t_minus1 = lag(size_t0),
     size_t1       = lead(size_t0)
   ) %>%
-  ungroup()
-```
-
-For each coral, look at its years in order and check if there's ever a jump of more than 1 year between observations. If so, keep all rows for that coral. The result is a dataset of only the corals that "disappeared" for at least one survey year and reappeared later - this would indicate recruitment of the same species at the exact location where another had died.
-
-```{r}
-# For each coral_id, check if years are non-consecutive (gap = died & same species recruited)
-gaps <- volume_coral |>
-  arrange(coral_id, year) |>
-  group_by(coral_id) |>
-  filter(any(diff(year) > 1)) |> # any() Given set of logical vectors, is at least one value true? 
-  ungroup()                      # diff() calculates difference between years 
-  
-
-# total number of instances where this took place 
-n_distinct(gaps$coral_id)
-
+  ungroup() %>% 
+  filter(str_starts(transect, "T")) %>% 
+  select(year, coral_id, site, habitat, transect, transect_id, taxa, x, y, z, l, w, h, size_t_minus1, size_t0, size_t1 ,obs, note, dyn_recruitment, dyn_death)
 ```
 
 ```{r}
-# Flag coral_ids where size drops dramatically (e.g., large coral -> tiny recruit)
-resets <- volume_coral |>
-  select(year, site, habitat, transect_id, coral_id, size_t0, size_t1) %>% 
-  arrange(coral_id, year) |>
-  group_by(coral_id) |>
-  mutate(pct_change = (size_t1 - size_t0) / size_t0) |>
-  filter(pct_change < -0.95) |>
-  ungroup()
-
-reset_ids <- resets |> pull(coral_id) |> unique()
-
-resets <- volume_coral |>
-  filter(coral_id %in% reset_ids) |>
-  select(year, coral_id, size_t0, size_t1, dyn_death, dyn_recruitment) |>
-  arrange(coral_id, year)
-```
-
-```{r}
-write_csv(volume_coral, here::here("analysisdata", "coral_demography_analysis_data.csv"))
-```
-
-```{r}
-ggplot(volume_coral, aes(x = taxa, y = size_t0, fill = taxa)) +
-  geom_boxplot() +
-  labs(x = "Taxa", y = "Log Volume (cm³)") +
-  scale_y_log10(labels = scales::label_log()) + 
-  scale_fill_manual(values = coral_colors) + 
-  theme_minimal() + 
-  theme(legend.position = "none")
-```
-
-```{r}
-library(ggridges)
-
-
-ggplot(volume_coral, aes(x = size_t0, y = taxa, fill = taxa)) +
-  geom_density_ridges() +
-  scale_x_log10(labels = scales::label_log()) +
-  labs(x = "Log Volume (cm³)", y = "Taxa") +
-  scale_fill_manual(values = coral_colors) + 
-  theme_minimal() + 
-    theme(legend.position = "none")
+write_csv(coral_demography_2013_2024_analysis, here::here("analysisdata", "coral_demography_analysis_data.csv"))
 ```

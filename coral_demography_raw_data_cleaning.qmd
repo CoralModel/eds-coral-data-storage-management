@@ -162,16 +162,13 @@ long_coral_demography_2013_2024_dynamics <- long_coral_demography_2013_2024_dyna
          dyn_fission, dyn_edge)
 ```
 
-### THIS CHUNK 
-
 ```{r}
+# Filtering out corals with NAs across all measurements 
 long_coral_demography_2013_2024_dynamics <- long_coral_demography_2013_2024_dynamics %>% 
   group_by(coral_number) %>% 
-  mutate(total_length = sum(l, na.rm = TRUE)) %>% 
-  filter(total_length > 0)
+  mutate(lengths_sum = sum(l, na.rm = TRUE)) %>% # Take sum of lengths across years
+  filter(lengths_sum > 0) # Select only corals with at least one length measurement
 ```
--------------------------------------------------------------
-###
 
 ### Quality Assurance for dynamic columns
 
@@ -310,9 +307,7 @@ select(c(year, coral_id, site, habitat, transect, transect_id, taxa, x, y, z, l,
 
 Verify all transect positions are within transect boundaries
 
-x dimension: moving forward on the transect - meters (0-5)
-y dimension: left & right from x vector - centimeters (0-100)
-z dimension: vertical position from benthos - centimeters
+x dimension: moving forward on the transect - meters (0-5) y dimension: left & right from x vector - centimeters (0-100) z dimension: vertical position from benthos - centimeters
 
 Transects: One 5x1m transect on top of each of four 5x5m plot
 
@@ -390,12 +385,14 @@ corals_long_with_coral_id %>%
   select(coral_id, transect, taxa, y) %>% 
   distinct()
 ```
+
 ```{r}
 # Look at history. All y values are 200
 corals_long_with_coral_id %>% 
   filter(coral_id == "LTER4-BR-P07-Acr-2.25-200-0-2021") %>% 
   select(year, coral_id, x, y, z)
 ```
+
 ```{r}
 # Correct to 20 cm on transect 
 corals_long_with_coral_id <- corals_long_with_coral_id |>
@@ -412,6 +409,7 @@ cat("Plots - corals with y coordinate out of bounds:", nrow(p_oob_y), "\n")
 ```
 
 ### Quality assurance for coral measurements
+
 Verify all minimum/maximum measurements are reasonable.
 
 ```{r}
@@ -422,6 +420,7 @@ corals_long_with_coral_id %>%
                                       max = ~max(., na.rm = TRUE))), 
             .groups = "drop_last")    # Silences message 
 ```
+
 ### Flag Corals with large measurements for individual review.
 
 Rough estimates of the maximum measurements of all genera were given by Dr. Hunter Lenihan as follows:
@@ -481,7 +480,9 @@ corals_long_with_coral_id <- corals_long_with_coral_id |>
 ```
 
 ### Minimum measurements are mostly accurate
-There is one individual with 0 as as a height measurement. 
+
+There is one individual with 0 as as a height measurement.
+
 ```{r}
 # Isolate coral for coral_id
 corals_long_with_coral_id %>% 
@@ -510,6 +511,7 @@ corals_long_with_coral_id %>%
                                       max = ~max(., na.rm = TRUE))), 
             .groups = "drop_last")    # Silences message 
 ```
+
 ### Write .csv to `projectdata` folder.
 
 `coral_demography_2013_2024_long.csv` will be loaded into `coral_demography_analysis_cleaning.qmd` for transformation into an analysis-ready dataset used by downstream GLMMs, demographic profile figures, and spatiotemporal visualizations.
