@@ -5,7 +5,7 @@ editor: visual
 authors: Kylie Newcomer, Joaquin Sandoval, Vedika Shirtekar
 ---
 
-This document handles cleaning and quality assurance of long-format coral demography data spanning 2013–2023, as well as the standardization of 2024 field sheets to align with the long-format structure. Each row represents a single coral observation in a given year, with associated size measurements (length, width, height) and demographic dynamics (recruitment, death, fusion, fission etc). The cleaning steps standardize inconsistent labels in the `Dynamics` column, split it into binary indicator columns, and address logical inconsistencies in recruitment and death events to ensure each represents a true demographic transition rather than a carried-forward status.
+This document handles cleaning and quality assurance of long-format coral demography data spanning 2013–2023, as well as the standardization of 2024 field sheets to align with the long-format structure. Each row represents a single coral observation in a given year, with associated size measurements (length, width, height) and demographic dynamics (recruitment, death, fusion, fission etc). The cleaning steps standardize inconsistent labels in the `Dynamics` column, split it into binary indicator columns, and address logical inconsistencies in recruitment and death events to ensure each represents a true demographic transition.
 
 ### Load Necessary Libraries
 
@@ -68,6 +68,7 @@ coral_demography_2024 <- bind_rows(lapply(field_sheets_2024, read_file)) %>%
   mutate(Taxa   = if_else(Taxa == "A", "Acr", Taxa)) %>% 
   clean_names()
 
+# Verify only 4 taxa exist 
 cat("Unique taxa:", sort(unique(na.omit(coral_demography_2024$taxa))))
 ```
 
@@ -94,10 +95,13 @@ wide_coral_demography_2013_2024 <- wide_coral_demography_2013_2024 %>%
     max(coral_number, na.rm = TRUE) + cumsum(is.na(coral_number)),
     coral_number
   ))
-
 # Verify all coral numbers are unique
-stopifnot(length(unique(wide_coral_demography_2013_2024$coral_number)) ==
-          nrow(wide_coral_demography_2013_2024))
+if (length(unique(wide_coral_demography_2013_2024$coral_number)) ==
+    nrow(wide_coral_demography_2013_2024)) {
+  print("All coral numbers are unique")
+} else {
+  print("Duplicate coral numbers found")
+}
 ```
 
 ### Pivot complete dataset longer
@@ -108,7 +112,7 @@ Each row represents a single coral observation in a given year. We found several
 # Pivot year-suffix columns to long format (one row per coral-year)
 long_coral_demography_2013_2024 <- wide_coral_demography_2013_2024 %>%
   pivot_longer(cols = -c(1:8), names_to = c(".value", "year"), names_pattern = "(.*)(\\d{4}$)") %>% 
-  # To filter out empty rows from 2024 sheets 
+  # Filter out empty rows from 2024 sheets 
   filter(!is.na(year))
 ```
 
@@ -151,13 +155,14 @@ long_coral_demography_2013_2024_dynamics <- long_coral_demography_2013_2024_dyna
 
 ```{r}
 #| warning: false
-
 long_coral_demography_2013_2024_dynamics <- long_coral_demography_2013_2024_dynamics %>%
   mutate(across(c(year, l, w, h), as.numeric)) %>%
-  select(coral_number, year, site, habitat, transect, taxa, x, y, z, l, w, h, obs, note, growth_ratio,
+  select(coral_number, year, site, habitat, transect, taxa, x, y, z, l, w, h, obs, note,
          dyn_recruitment, dyn_growth, dyn_shrinkage, dyn_death, dyn_immigration, dyn_emigration, dyn_fusion,
          dyn_fission, dyn_edge)
 ```
+
+### THIS CHUNK 
 
 ```{r}
 long_coral_demography_2013_2024_dynamics <- long_coral_demography_2013_2024_dynamics %>% 
@@ -165,7 +170,8 @@ long_coral_demography_2013_2024_dynamics <- long_coral_demography_2013_2024_dyna
   mutate(total_length = sum(l, na.rm = TRUE)) %>% 
   filter(total_length > 0)
 ```
-
+-------------------------------------------------------------
+###
 
 ### Quality Assurance for dynamic columns
 
@@ -295,37 +301,35 @@ mutate(years_measure = ifelse(!is.na(l), year, NA)) %>%
 mutate(first_year = min(years_measure, na.rm = TRUE),
 # Create new coral_id based on location, taxa, and first occurance
 coral_id = str_c(site, habitat, transect, taxa, x, y, z, first_year, sep = "-"),
-transect_id = str_c(site, habitat, transect, sep = "_")) %>%
-select(-c(years_measure, new_coral_number, coral_number, first_year, life_stage)) %>% 
-  ungroup()
-
+transect_id = str_c(site, habitat, transect, sep = "_"))  %>% 
+  ungroup() %>% 
+select(c(year, coral_id, site, habitat, transect, transect_id, taxa, x, y, z, l, w, h, obs, note, dyn_recruitment, dyn_growth, dyn_shrinkage, dyn_death, dyn_immigration, dyn_emigration, dyn_fusion, dyn_fission, dyn_edge))
 ```
 
 ### Quality assurance for coral positions
 
 Verify all transect positions are within transect boundaries
 
-x dimension: moving forward on the transect - meters y dimension: left & right from x vector - centimeters z dimension: vertical position from benthos - centimeters
+x dimension: moving forward on the transect - meters (0-5)
+y dimension: left & right from x vector - centimeters (0-100)
+z dimension: vertical position from benthos - centimeters
 
 Transects: One 5x1m transect on top of each of four 5x5m plot
 
-**Sample Poc & Por in first 1m2 only, sample Acr, Mil & Por\>25cm in entire 5m2**
-
 Plots: Ten 10x1m transects running through 10x10m plot
 
-**Sample all Acr, Mil & Por\>25cm in entire 100m2 and Poc in first 25m2 only**
-
 ```{r}
-# Transect QA - positions out of bounds
+# Transect QA - x positions out of bounds
 transects <- corals_long_with_coral_id %>% filter(str_detect(transect, "^T"))
-t_oob <- transects %>% filter(x < 0 | x > 5) %>% distinct(new_coral_number)
-cat("Transects - corals with out of bounds x:", nrow(t_oob), "\n")
+t_oob_x <- transects %>% filter(x < 0 | x > 5) %>% distinct(coral_id)
+cat("Transects - corals with x coordinate out of bounds:", nrow(t_oob_x), "\n")
 
-# Plot QA - positions out of bounds
+# Plot QA - x positions out of bounds
 plots <- corals_long_with_coral_id %>% filter(str_detect(transect, "^P"))
-p_oob <- plots %>% filter(x < 0 | x > 10) %>% distinct(new_coral_number)
-cat("Plots - corals with out of bounds x:", nrow(p_oob), "\n")
+p_oob_x <- plots %>% filter(x < 0 | x > 10) %>% distinct(coral_id)
+cat("Plots - corals with x coordinate out of bounds:", nrow(p_oob_x), "\n")
 ```
+
 ## Fix x values out of bounds
 
 ```{r}
@@ -333,7 +337,7 @@ cat("Plots - corals with out of bounds x:", nrow(p_oob), "\n")
 corals_long_with_coral_id %>% 
   filter((str_detect(transect, "^T") & x > 5) | 
          (str_detect(transect, "^P") & x > 10)) %>% 
-  select(new_coral_number, transect, taxa, x) %>% 
+  select(coral_id, transect, taxa, x) %>% 
   distinct()
 ```
 
@@ -345,13 +349,13 @@ corals_long_with_coral_id <- corals_long_with_coral_id %>%
 
 # Transect QA - positions out of bounds
 transects <- corals_long_with_coral_id %>% filter(str_detect(transect, "^T"))
-t_oob <- transects %>% filter(x < 0 | x > 5) %>% distinct(new_coral_number)
-cat("Transects - corals with out of bounds x:", nrow(t_oob), "\n")
+t_oob_x <- transects %>% filter(x < 0 | x > 5) %>% distinct(coral_id)
+cat("Transects - corals with x coordinate out of bounds:", nrow(t_oob_x), "\n")
 
 # Plot QA - positions out of bounds
 plots <- corals_long_with_coral_id %>% filter(str_detect(transect, "^P"))
-p_oob <- plots %>% filter(x < 0 | x > 10) %>% distinct(new_coral_number)
-cat("Plots - corals with out of bounds x:", nrow(p_oob), "\n")
+p_oob_x <- plots %>% filter(x < 0 | x > 10) %>% distinct(coral_id)
+cat("Plots - corals with x coordinate out of bounds:", nrow(p_oob_x), "\n")
 ```
 
 ```{r}
@@ -359,46 +363,156 @@ cat("Plots - corals with out of bounds x:", nrow(p_oob), "\n")
 corals_long_with_coral_id %>%
   filter((str_detect(transect, "^T") & x > 5) |
          (str_detect(transect, "^P") & x > 10)) %>%
-  select(new_coral_number, transect, taxa, x, y, z) %>%
+  select(coral_id, transect, taxa, x) %>%
   distinct()
 ```
 
 ## Need to check. Not big deal but plots will just drop these coral downstream
 
-## Fix x values out of bounds
+## Fix y values out of bounds
 
 ```{r}
-# Check all out-of-bounds x values before fixing
-corals_long_with_coral_id %>% 
-  filter((str_detect(transect, "^T") & y > 100) | 
-         (str_detect(transect, "^P") & y > 100)) %>% 
-  select(new_coral_number, transect, taxa, y) %>% 
-  distinct()
+# Transect QA - y positions out of bounds
+transects <- corals_long_with_coral_id %>% filter(str_detect(transect, "^T"))
+t_oob_y <- transects %>% filter(y < 0 | y > 100) %>% distinct(coral_id)
+cat("Transects - corals with y coordinate out of bounds:", nrow(t_oob_y), "\n")
+
+# Plot QA - y positions out of bounds
+plots <- corals_long_with_coral_id %>% filter(str_detect(transect, "^P"))
+p_oob_y <- plots %>% filter(y < 0 | y > 100) %>% distinct(coral_id)
+cat("Plots - corals with y coordinate out of bounds:", nrow(p_oob_y), "\n")
 ```
 
-## This is only one instance -\> covert to 100?
+```{r}
+# Check individual coral with out-of-bounds y value before fixing
+corals_long_with_coral_id %>% 
+  filter((str_detect(transect, "^P") & y > 100)) %>% 
+  select(coral_id, transect, taxa, y) %>% 
+  distinct()
+```
+```{r}
+# Look at history. All y values are 200
+corals_long_with_coral_id %>% 
+  filter(coral_id == "LTER4-BR-P07-Acr-2.25-200-0-2021") %>% 
+  select(year, coral_id, x, y, z)
+```
+```{r}
+# Correct to 20 cm on transect 
+corals_long_with_coral_id <- corals_long_with_coral_id |>
+  mutate(
+    y = if_else(coral_id == "LTER4-BR-P07-Acr-2.25-200-0-2021", 20, y)
+  )
+```
+
+```{r}
+# Plot QA - y positions out of bounds
+plots <- corals_long_with_coral_id %>% filter(str_detect(transect, "^P"))
+p_oob_y <- plots %>% filter(y < 0 | y > 100) %>% distinct(coral_id)
+cat("Plots - corals with y coordinate out of bounds:", nrow(p_oob_y), "\n")
+```
 
 ### Quality assurance for coral measurements
-
-Verify all measurements are reasonable. Largest corals should be Porites in the backreef plot.
+Verify all minimum/maximum measurements are reasonable.
 
 ```{r}
 # Range of each measurement for each taxa/habitat combination 
 corals_long_with_coral_id %>%
   group_by(taxa, habitat) %>%
   summarise(across(c(l, w, h), list(min = ~min(., na.rm = TRUE), 
-                                     max = ~max(., na.rm = TRUE))), 
+                                      max = ~max(., na.rm = TRUE))), 
             .groups = "drop_last")    # Silences message 
 ```
+### Flag Corals with large measurements for individual review.
 
-These are definitely data entries errors. .1 of a centimeter? Not plausible. 8 meter high porites is ridiculous. Need to make filter thresholds and correct those measurements.
+Rough estimates of the maximum measurements of all genera were given by Dr. Hunter Lenihan as follows:
+
+*Pocillopora*: \~1 meter
+
+*Acropora*: \~2 meters
+
+*Porites*: \~4 meters
+
+*Millepora*: \~2 meters
 
 ```{r}
-df_large_measurements <- corals_long_with_coral_id %>%
-  filter(l > 500 | w > 500 | h > 500)
+corals_long_with_coral_id |>
+  mutate(
+    max_dim = case_when(
+      taxa == "Poc" ~ 100,
+      taxa == "Acr" ~ 200,
+      taxa == "Por" ~ 400,
+      taxa == "Mil" ~ 200
+    )
+  ) |>
+  filter(if_any(c(l, w, h), ~ .x > max_dim)) |>
+  select(year, coral_id, site, habitat, transect, taxa, l, w, h)
 ```
 
-### Write csv to 'analysisdata' folder -- maybe should be a separate folder
+```{r}
+# View life history of flagged Pocillopora 
+corals_long_with_coral_id %>% 
+  filter(coral_id == "LTER2-BR-P04-Poc-1.45-55-40-2023") %>% 
+  select(year, coral_id, l, w, h)
+```
+
+```{r}
+# Correct 2024 measurements 
+corals_long_with_coral_id <- corals_long_with_coral_id |>
+  mutate(
+    l = if_else(coral_id == "LTER2-BR-P04-Poc-1.45-55-40-2023" & year == 2024, 2.52, l),
+    w = if_else(coral_id == "LTER2-BR-P04-Poc-1.45-55-40-2023" & year == 2024, 4, w),
+    h = if_else(coral_id == "LTER2-BR-P04-Poc-1.45-55-40-2023" & year == 2024, 4, h)
+  )
+```
+
+```{r}
+# View life history of flagged Porites 
+corals_long_with_coral_id %>% 
+  filter(coral_id == "LTER4-BR-T04-Por-5-30-40-2013") %>% 
+  select(year, coral_id, l, w, h)
+```
+
+```{r}
+# Correcting incorrect height of Porites individual in 2020 
+corals_long_with_coral_id <- corals_long_with_coral_id |>
+  mutate(
+    h = if_else(coral_id == "LTER4-BR-T04-Por-5-30-40-2013" & year == 2020, 80, h)
+  )
+```
+
+### Minimum measurements are mostly accurate
+There is one individual with 0 as as a height measurement. 
+```{r}
+# Isolate coral for coral_id
+corals_long_with_coral_id %>% 
+  filter(h == 0) %>% 
+  select(year, coral_id, l, w, h)
+
+# View life history 
+corals_long_with_coral_id %>% 
+  filter(coral_id == "LTER1-BR-P02-Acr-6.3-30-2-2023") %>% 
+  select(year, coral_id, l, w, h)
+```
+
+```{r}
+# Correct measurement 
+corals_long_with_coral_id <- corals_long_with_coral_id |>
+  mutate(
+    h = if_else(coral_id == "LTER1-BR-P02-Acr-6.3-30-2-2023" & year == 2023, 10, h)
+  )
+```
+
+```{r}
+# Recheck range of each measurement for each taxa/habitat combination 
+corals_long_with_coral_id %>%
+  group_by(taxa, habitat) %>%
+  summarise(across(c(l, w, h), list(min = ~min(., na.rm = TRUE), 
+                                      max = ~max(., na.rm = TRUE))), 
+            .groups = "drop_last")    # Silences message 
+```
+### Write .csv to `projectdata` folder.
+
+`coral_demography_2013_2024_long.csv` will be loaded into `coral_demography_analysis_cleaning.qmd` for transformation into an analysis-ready dataset used by downstream GLMMs, demographic profile figures, and spatiotemporal visualizations.
 
 ```{r}
  write_csv(corals_long_with_coral_id,  here::here("projectdata", "coral_demography_2013_2024_long.csv"))
