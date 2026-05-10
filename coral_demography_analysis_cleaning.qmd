@@ -60,6 +60,10 @@ coral_demography_2013_2024_analysis <- coral_demography_2013_2024_long %>%
     taxa == "Por" ~ hemisph_vol(l, w, h),
     TRUE          ~ cyl_vol(l, w, h)
   )) %>%
+  mutate(period = as_factor(case_when(
+  year %in% 2013:2018 ~ 0,
+  year %in% 2019:2024 ~ 1
+))) %>% 
   arrange(coral_id, year) %>%
   group_by(coral_id) %>%
   mutate(
@@ -68,7 +72,7 @@ coral_demography_2013_2024_analysis <- coral_demography_2013_2024_long %>%
   ) %>%
   ungroup() %>% 
   filter(str_starts(transect, "T")) %>% 
-  select(year, coral_id, site, habitat, transect, transect_id, taxa, x, y, z, l, w, h, size_t_minus1, size_t0, size_t1 ,obs, note, dyn_recruitment, dyn_death)
+  select(year, coral_id, site, habitat, transect, transect_id, taxa, x, y, z, l, w, h, period, size_t_minus1, size_t0, size_t1 ,obs, note, dyn_recruitment, dyn_death)
 ```
 
 ```{r}
