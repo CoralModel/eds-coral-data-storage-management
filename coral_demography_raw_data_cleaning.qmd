@@ -362,7 +362,27 @@ corals_long_with_coral_id %>%
   distinct()
 ```
 
-## Need to check. Not big deal but plots will just drop these coral downstream
+## Correct borderline cases 
+
+```{r}
+corals_long_with_coral_id <- corals_long_with_coral_id %>%
+  mutate(x = case_when(
+    coral_id == "LTER2-OR-T04-Acr-5.4-39-5-2019" ~ 0.54,
+    coral_id == "LTER4-BR-T01-Poc-8-50-30-2020"  ~ 0.8,
+    coral_id == "LTER4-OR-T03-Por-8-75-0-2020"   ~ 0.8,
+    coral_id == "LTER5-OR-T02-Acr-9.5-17-3.4-2018" ~ 0.95,
+    coral_id == "LTER1-BR-T03-Poc-5.1-90-90-2024" ~ 0.51,
+    coral_id == "LTER1-BR-T03-Poc-6-4.5-30-2024" ~ 0.60,
+    TRUE ~ x
+  ))
+```
+
+```{r}
+# Transect QA - verfity no x positions out of bounds
+transects <- corals_long_with_coral_id %>% filter(str_detect(transect, "^T"))
+t_oob_x <- transects %>% filter(x < 0 | x > 5) %>% distinct(coral_id)
+cat("Transects - corals with x coordinate out of bounds:", nrow(t_oob_x), "\n")
+```
 
 ## Fix y values out of bounds
 
