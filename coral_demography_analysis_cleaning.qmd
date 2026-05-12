@@ -10,19 +10,19 @@ This script prepares `coral_demography_2013_2024_long.csv` for downstream GLMM a
 
 **Data Cleaning**
 
-- Filters to transect data only, excluding backreef plots
+-   Filters to transect data only, excluding backreef plots
 
-- Filters for only recruitment and death dynamic columns
+-   Filters for only recruitment and death dynamic columns
 
-- Converts `y` and `z` dimensions from meters to centimeters for downstream visualizations
+-   Converts `y` and `z` dimensions from meters to centimeters for downstream visualizations
 
 **Variable Construction**
 
-- Creates a bleaching period indicator: `0` = prior (2013–2018), `1` = post (2019–2024)
+-   Creates a bleaching period indicator: `0` = prior (2013–2018), `1` = post (2019–2024)
 
-- Sources volume formulas from the `R/` folder to calculate colony volume by taxa: cylinder (*Acropora*), hemisphere *Porites*), sphere (*Pocillopora*)
+-   Sources volume formulas from the `R/` folder to calculate colony volume by taxa: cylinder (*Acropora*), hemisphere *Porites*), sphere (*Pocillopora*)
 
-- Creates lagged size variables: `size_t_minus1` (previous year), `size_t0` (current year), `size_t1` (following year)
+-   Creates lagged size variables: `size_t_minus1` (previous year), `size_t0` (current year), `size_t1` (following year)
 
 ### Load Necessary Libraries
 
